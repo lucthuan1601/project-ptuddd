@@ -31,6 +31,8 @@ Pods/
 .env
 .env.*
 !.env.example
+env.json
+google-services.json
 
 # Office lock files (Word đang mở file .docx)
 ~$*
