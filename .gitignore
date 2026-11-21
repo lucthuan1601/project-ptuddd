@@ -32,6 +32,9 @@ Pods/
 .env.*
 !.env.example
 
+# Office lock files (Word đang mở file .docx)
+~$*
+
 # IDE & Editor configs
 .idea/
 .vscode/
