@@ -248,3 +248,65 @@
 
 ---
 
+## 4.12 Bảng đặc tả UC-12: Tiếp nhận yêu cầu SOS
+
+| Mục | Nội dung |
+| --- | --- |
+| Tên use case | Tiếp nhận yêu cầu SOS (UC-12) |
+| Tác nhân chính | Shop Owner (Chủ tiệm), Volunteer (Tình nguyện viên) – người tiếp nhận; Rider – người tạo yêu cầu (tác nhân phụ) |
+| Mục đích (mô tả) | Cho phép chủ tiệm hoặc TNV nhận cảnh báo cứu hộ khẩn cấp ở gần, xem thông tin sự cố, quyết định Tiếp nhận hoặc Từ chối và xác nhận hoàn thành ca cứu hộ. Mỗi ca chỉ được gán cho đúng một người tiếp nhận. |
+| Mức độ ưu tiên | Rất cao |
+| Điều kiện kích hoạt | Có yêu cầu SOS mới (`status = 'pending'`) trong bán kính phục vụ; hệ thống đẩy thông báo FCM và hiển thị Pop-up khẩn cấp trên thiết bị người nhận. |
+| Điều kiện tiên quyết | Người nhận đã đăng nhập; tiệm `is_open = true` hoặc TNV `is_available = true`, đều `status = 'approved'`; thiết bị đã đăng ký `fcm_token`. |
+| Điều kiện thành công | Ca SOS chuyển sang `accepted` và gán đúng một trong `accepted_shop_id` / `accepted_volunteer_id`; khi hỗ trợ xong chuyển sang `completed` kèm `completed_at`. Nếu người nhận từ chối, ca vẫn `pending` cho người khác. |
+| Điều kiện thất bại | Ca đã được người khác nhận trước, đã bị Rider hủy (`cancelled`) hoặc hết thời gian chờ; người nhận không được gán vào ca. |
+
+**Đầu vào (Input)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Bắt buộc | Ràng buộc / Định dạng | Nguồn |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Mã yêu cầu (`request_id` = `sos_requests.id`) | UUID | Có | Ca đang `status = 'pending'` | Hệ thống (payload thông báo FCM / Realtime) |
+| 2 | Thông tin ca SOS: `issue_type`, `note`, `contact_phone`, `latitude`, `longitude`, `created_at` | VARCHAR, TEXT, DOUBLE, TIMESTAMPTZ | Có | Đọc từ bản ghi `sos_requests` | CSDL |
+| 3 | Vị trí hiện tại của người nhận | (lat, lng) DOUBLE | Có | Dùng tính khoảng cách tới điểm sự cố | Hệ thống (Geolocator – UC-02) |
+| 4 | Mã người tiếp nhận (`shop_id` hoặc `volunteer_profiles.id`) | UUID | Có | Khớp vai trò người đăng nhập | Hệ thống (phiên đăng nhập + CSDL) |
+| 5 | Quyết định | Enum | Có | `accept` (Tiếp nhận) / `reject` (Từ chối) | Người dùng nhấn nút |
+| 6 | Xác nhận hoàn thành | Thao tác nhấn nút | Có (khi kết thúc ca) | Chỉ người đã tiếp nhận ca mới thực hiện được | Người dùng nhấn "Hoàn thành ca cứu hộ" |
+
+**Đầu ra (Output)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Đích | Mô tả |
+| --- | --- | --- | --- | --- |
+| 1 | Pop-up khẩn cấp (loại sự cố, khoảng cách, vị trí trên bản đồ, SĐT Rider) kèm âm thanh/rung | Giao diện | UI người nhận | Hiển thị khi có ca mới |
+| 2 | `sos_requests.status = 'accepted'` + `accepted_shop_id` **hoặc** `accepted_volunteer_id` | VARCHAR, UUID | CSDL | Gán ca cho người tiếp nhận (UPDATE có điều kiện `WHERE status = 'pending'`) |
+| 3 | Thông tin người hỗ trợ (tên tiệm/TNV, SĐT, vị trí) | Realtime event | Realtime → App Rider | Màn hình Rider chuyển từ "Đang chờ cứu hộ..." sang "Đã có người tiếp nhận" |
+| 4 | Lệnh đóng Pop-up trên thiết bị khác | Realtime event | Realtime → App tiệm/TNV khác | Ca không còn khả dụng |
+| 5 | Màn hình "Ca cứu hộ đang xử lý" (nút Gọi điện – UC-05, Chỉ đường – UC-06) | Giao diện | UI người nhận | Hỗ trợ di chuyển tới điểm sự cố |
+| 6 | `sos_requests.status = 'completed'`, `completed_at = NOW()` | VARCHAR, TIMESTAMPTZ | CSDL | Kết thúc ca cứu hộ |
+| 7 | `volunteer_profiles.completed_count + 1` | INTEGER | CSDL | Chỉ khi người tiếp nhận là TNV |
+| 8 | Thông báo "Ca cứu hộ đã hoàn thành" (kèm gợi ý đánh giá nếu là tiệm – UC-08) | FCM / Realtime | App Rider | Kết thúc phía Rider |
+
+**Luồng sự kiện chính**
+
+1. Khi có ca SOS `pending` trong bán kính phục vụ, hệ thống phát âm thanh/rung và hiển thị Pop-up khẩn cấp trên thiết bị các tiệm đang mở cửa và TNV đang sẵn sàng.
+2. Người nhận xem nhanh loại sự cố, ghi chú, khoảng cách, vị trí trên bản đồ và SĐT liên hệ của Rider.
+3. Người nhận nhấn "Tiếp nhận".
+4. Hệ thống thực hiện cập nhật có điều kiện `UPDATE sos_requests SET status = 'accepted', accepted_... = <id> WHERE id = <request_id> AND status = 'pending'`.
+5. Cập nhật thành công: Rider nhận thông tin người hỗ trợ qua Supabase Realtime; Pop-up trên thiết bị các tiệm/TNV khác tự đóng.
+6. Hệ thống chuyển người nhận sang màn hình "Ca cứu hộ đang xử lý" với nút Gọi điện (UC-05) và Chỉ đường (UC-06).
+7. Sau khi hỗ trợ xong, người nhận nhấn "Hoàn thành ca cứu hộ"; hệ thống cập nhật `status = 'completed'`, `completed_at` (và `completed_count` nếu là TNV).
+8. Rider nhận thông báo hoàn thành; nếu người hỗ trợ là tiệm sửa xe, hệ thống gợi ý Rider đánh giá dịch vụ (UC-08).
+
+**Luồng sự kiện thay thế**
+
+- **A1 – Người nhận từ chối:** Tại bước 3, nếu chọn "Từ chối", Pop-up đóng trên thiết bị người đó; trạng thái ca không đổi (`pending`) để người khác tiếp nhận.
+- **A2 – Bỏ qua thông báo:** Nếu người nhận không thao tác trong 60 giây, Pop-up tự thu nhỏ vào danh sách "Yêu cầu SOS gần bạn"; người nhận vẫn có thể mở lại và tiếp nhận khi ca còn `pending`.
+- **A3 – Rider hủy yêu cầu:** Khi ca còn `pending`, nếu Rider hủy (`status = 'cancelled'`), Pop-up trên mọi thiết bị người nhận tự đóng kèm thông báo *"Khách hàng đã hủy yêu cầu cứu hộ"*.
+
+**Luồng sự kiện ngoại lệ**
+
+- **E1 – Ca đã có người tiếp nhận:** Tại bước 4, câu lệnh cập nhật không tác động bản ghi nào; hệ thống báo *"Ca cứu hộ này đã được người khác tiếp nhận"* và đóng Pop-up.
+- **E2 – Người nhận đang có ca khác:** Tại bước 3, nếu người nhận đang có ca `accepted` chưa hoàn thành, nút "Tiếp nhận" bị vô hiệu hóa kèm ghi chú *"Bạn đang xử lý một ca cứu hộ khác"*.
+- **E3 – Mất kết nối mạng:** Tại bước 4 hoặc 7, hệ thống báo lỗi kết nối và cho phép thử lại; trạng thái ca trên CSDL không thay đổi cho tới khi cập nhật thành công.
+
+---
+
