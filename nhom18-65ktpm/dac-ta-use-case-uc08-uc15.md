@@ -310,3 +310,64 @@
 
 ---
 
+## 4.13 Bảng đặc tả UC-13: Đăng ký Hồ sơ Tình nguyện viên
+
+| Mục | Nội dung |
+| --- | --- |
+| Tên use case | Đăng ký Hồ sơ Tình nguyện viên (UC-13) |
+| Tác nhân chính | Volunteer (Tình nguyện viên) |
+| Mục đích (mô tả) | Cho phép TNV khai báo SĐT liên hệ, kỹ năng hỗ trợ (vá xe, kích bình, tiếp xăng, kéo xe...), dụng cụ mang theo, khu vực và bán kính sẵn sàng hỗ trợ, kèm giấy tờ xác minh. Hồ sơ phải được Admin duyệt (UC-14) trước khi TNV được nhận SOS. |
+| Mức độ ưu tiên | Cao |
+| Điều kiện kích hoạt | Ngay sau khi đăng ký tài khoản vai trò Volunteer (UC-01), hoặc TNV chọn mục "Hồ sơ tình nguyện" trên trang cá nhân. |
+| Điều kiện tiên quyết | Đã đăng nhập với `role = 'volunteer'`, tài khoản `status = 'active'`; ứng dụng đã được cấp quyền vị trí (UC-02). |
+| Điều kiện thành công | Hồ sơ được lưu vào `volunteer_profiles` với `status = 'pending'`, `is_available = false` (hồ sơ mới) hoặc được cập nhật thành công; ảnh xác minh lưu trên Supabase Storage. |
+| Điều kiện thất bại | Không lưu được do thiếu trường bắt buộc, sai định dạng, tải ảnh xác minh thất bại hoặc mất kết nối. |
+
+**Đầu vào (Input)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Bắt buộc | Ràng buộc / Định dạng | Nguồn |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Mã tài khoản (`user_id`) | UUID | Có | Lấy từ phiên đăng nhập; mỗi tài khoản chỉ có 1 hồ sơ (UNIQUE) | Hệ thống (Supabase Auth) |
+| 2 | Họ tên | VARCHAR(100) | Có | Tự điền từ `users.full_name`, cho phép xem lại | CSDL `users` |
+| 3 | SĐT liên hệ (`phone`) | VARCHAR(20) | Có | Số điện thoại Việt Nam 10 chữ số, bắt đầu bằng 0; mặc định lấy `users.phone` | Người dùng nhập / CSDL |
+| 4 | Danh sách kỹ năng (`skills`) | TEXT[] | Có | Chọn ≥ 1 trong: vá xe, kích bình, tiếp xăng, kéo xe, sửa điện, khác | Người dùng chọn (checkbox) |
+| 5 | Dụng cụ mang theo (`tools`) | TEXT | Không | Tối đa 300 ký tự | Người dùng nhập |
+| 6 | Ảnh CCCD / giấy tờ xác minh | Tệp ảnh | Có (hồ sơ mới) | JPG/PNG, dung lượng ≤ 5 MB | Người dùng chụp / chọn từ thư viện |
+| 7 | Vị trí hoạt động chính (`location`) | (lat, lng) DOUBLE | Có | Mặc định vị trí GPS hiện tại, có thể chọn lại trên bản đồ | Hệ thống (UC-02) / Người dùng chọn |
+| 8 | Bán kính hỗ trợ (`service_radius_km`) | SMALLINT | Có | Số nguyên 1–20 km (gợi ý nhanh 3 / 5 / 10 km), mặc định 5 | Người dùng chọn |
+
+**Đầu ra (Output)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Đích | Mô tả |
+| --- | --- | --- | --- | --- |
+| 1 | Bản ghi hồ sơ (`id`, `user_id`, `phone`, `skills`, `tools`, `id_card_url`, `service_radius_km`, `location`) | Row bảng `volunteer_profiles` | CSDL | Tạo mới hoặc cập nhật |
+| 2 | Trạng thái hồ sơ (`status`) và `is_available` | VARCHAR, BOOLEAN | CSDL | Hồ sơ mới: `status = 'pending'`, `is_available = false` |
+| 3 | URL ảnh xác minh (`id_card_url`) | TEXT | Storage + CSDL | Ảnh lưu ở bucket riêng tư `volunteer-docs`, chỉ chủ hồ sơ và Admin xem được |
+| 4 | Thông báo "Hồ sơ đã được gửi, vui lòng chờ Quản trị viên phê duyệt" | Chuỗi | UI | Hiển thị cho TNV |
+| 5 | Nhãn trạng thái hồ sơ trên trang cá nhân | Giao diện | UI | Chờ duyệt / Đã duyệt / Bị từ chối (kèm lý do) |
+
+**Luồng sự kiện chính**
+
+1. TNV chọn mục "Hồ sơ tình nguyện" (hoặc được chuyển tới tự động sau khi đăng ký).
+2. Hệ thống hiển thị form hồ sơ: trống nếu chưa có hồ sơ, hoặc hiển thị dữ liệu cũ để chỉnh sửa.
+3. TNV nhập SĐT, chọn kỹ năng, nhập dụng cụ, chọn bán kính hỗ trợ và tải ảnh giấy tờ xác minh.
+4. TNV xác nhận khu vực hoạt động chính (mặc định vị trí GPS hiện tại, có thể chọn lại trên bản đồ).
+5. TNV nhấn "Gửi hồ sơ".
+6. Hệ thống kiểm tra dữ liệu: SĐT đúng định dạng, có ít nhất 1 kỹ năng, bán kính trong 1–20 km, đã có ảnh xác minh hợp lệ.
+7. Hệ thống tải ảnh xác minh lên Supabase Storage và lưu hồ sơ vào `volunteer_profiles` với `status = 'pending'`, `is_available = false`.
+8. Hệ thống thông báo đã gửi hồ sơ và hiển thị trạng thái "Chờ duyệt" trên trang cá nhân.
+
+**Luồng sự kiện thay thế**
+
+- **A1 – Cập nhật hồ sơ đã duyệt:** Nếu TNV chỉ sửa kỹ năng, dụng cụ, vị trí hoặc bán kính, hệ thống cập nhật trực tiếp và giữ `status = 'approved'`. Nếu thay đổi SĐT hoặc giấy tờ xác minh, hồ sơ chuyển về `'pending'`, `is_available = false` để Admin duyệt lại.
+- **A2 – Gửi lại hồ sơ bị từ chối:** Tại bước 2, nếu hồ sơ đang `rejected`, hệ thống hiển thị lý do từ chối (UC-14); sau khi TNV sửa và gửi lại, `status` chuyển về `'pending'`.
+
+**Luồng sự kiện ngoại lệ**
+
+- **E1 – Thiếu thông tin bắt buộc:** Tại bước 6, hệ thống tô đỏ các trường thiếu và báo *"Vui lòng nhập đầy đủ các thông tin bắt buộc"*.
+- **E2 – Sai định dạng:** Tại bước 6, hệ thống báo *"Số điện thoại không hợp lệ"* hoặc *"Bán kính hỗ trợ phải từ 1 đến 20 km"*.
+- **E3 – Ảnh không hợp lệ hoặc tải ảnh thất bại:** Tại bước 6–7, hệ thống báo *"Không thể tải ảnh xác minh, vui lòng chọn ảnh JPG/PNG dưới 5 MB và thử lại"* và hủy tiến trình lưu.
+- **E4 – Mất kết nối mạng:** Tại bước 7, hệ thống báo lỗi kết nối, giữ nguyên dữ liệu trên form để gửi lại.
+
+---
+
