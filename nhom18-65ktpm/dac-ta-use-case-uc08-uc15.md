@@ -137,3 +137,58 @@
 
 ---
 
+## 4.10 Bảng đặc tả UC-10: Ghim vị trí tiệm trên bản đồ
+
+| Mục | Nội dung |
+| --- | --- |
+| Tên use case | Ghim vị trí tiệm trên bản đồ (UC-10) |
+| Tác nhân chính | Shop Owner (Chủ tiệm); tác nhân phụ: Google Maps API |
+| Mục đích (mô tả) | Xác định chính xác tọa độ địa lý (vĩ độ, kinh độ) và địa chỉ văn bản của tiệm, làm căn cứ hiển thị Marker trên bản đồ và tính khoảng cách cho Rider tìm kiếm (UC-03) và gửi SOS (UC-07). |
+| Mức độ ưu tiên | Cao |
+| Điều kiện kích hoạt | Trong form Tạo/Sửa hồ sơ tiệm (UC-09), chủ tiệm nhấn "Chọn vị trí trên bản đồ". |
+| Điều kiện tiên quyết | Chủ tiệm đã đăng nhập và đang ở màn hình Tạo/Sửa hồ sơ tiệm (UC-09); thiết bị có kết nối Internet để tải bản đồ. |
+| Điều kiện thành công | Cặp tọa độ (latitude, longitude) và chuỗi địa chỉ được trả về và điền vào form UC-09 (được lưu vào CSDL khi chủ tiệm lưu form). |
+| Điều kiện thất bại | Không xác định được tọa độ (bản đồ không tải được, chủ tiệm hủy thao tác); form UC-09 giữ nguyên vị trí cũ (nếu có). |
+
+**Đầu vào (Input)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Bắt buộc | Ràng buộc / Định dạng | Nguồn |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Tọa độ khởi tạo tâm bản đồ | (lat, lng) DOUBLE | Có | Ưu tiên: tọa độ tiệm đã lưu → vị trí GPS hiện tại (UC-02) → tâm mặc định của thành phố | CSDL / Hệ thống (Geolocator) |
+| 2 | Vị trí Marker được chọn | (lat, lng) DOUBLE | Có | −90 ≤ lat ≤ 90; −180 ≤ lng ≤ 180; nằm trong lãnh thổ Việt Nam | Người dùng kéo bản đồ / thả Marker |
+| 3 | Từ khóa tìm địa chỉ | Chuỗi | Không | Tên đường, phường/xã, quận/huyện (khi định vị thủ công) | Người dùng nhập trên thanh tìm kiếm |
+| 4 | Địa chỉ văn bản | Chuỗi | Có | Kết quả Reverse Geocoding cho tọa độ Marker | API ngoài (Google Geocoding API) |
+| 5 | Lệnh xác nhận vị trí | Thao tác nhấn nút | Có | Nút "Xác nhận vị trí này" | Người dùng |
+
+**Đầu ra (Output)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Đích | Mô tả |
+| --- | --- | --- | --- | --- |
+| 1 | Vĩ độ, Kinh độ (`latitude`, `longitude`) | DOUBLE PRECISION | Form UC-09 → CSDL `shops` | Tọa độ tiệm đã xác nhận |
+| 2 | Địa chỉ chi tiết (`address`) | TEXT | Form UC-09 → CSDL `shops` | Chuỗi địa chỉ từ Reverse Geocoding |
+| 3 | Tọa độ không gian (`location`) | GEOGRAPHY(Point, 4326) | CSDL `shops` | Sinh từ cặp tọa độ khi lưu form UC-09 |
+| 4 | Marker và thẻ địa chỉ xem trước | Giao diện | UI | Hiển thị vị trí đang chọn và địa chỉ tương ứng trước khi xác nhận |
+
+**Luồng sự kiện chính**
+
+1. Chủ tiệm nhấn "Chọn vị trí trên bản đồ" trong form UC-09.
+2. Hệ thống mở màn hình bản đồ Google Maps, đặt tâm tại tọa độ tiệm đã lưu hoặc vị trí GPS hiện tại của thiết bị.
+3. Chủ tiệm di chuyển bản đồ hoặc kéo Marker tới đúng vị trí cửa hàng.
+4. Khi Marker dừng lại, hệ thống gọi Google Reverse Geocoding API để lấy địa chỉ văn bản và hiển thị trên thẻ xem trước.
+5. Chủ tiệm kiểm tra địa chỉ và nhấn "Xác nhận vị trí này".
+6. Hệ thống trả cặp tọa độ và địa chỉ về form UC-09 rồi đóng màn hình bản đồ.
+
+**Luồng sự kiện thay thế**
+
+- **A1 – Định vị bằng tìm kiếm địa chỉ:** Tại bước 3, chủ tiệm nhập địa chỉ vào thanh tìm kiếm; hệ thống gọi Geocoding API, di chuyển bản đồ và Marker tới kết quả đầu tiên, sau đó tiếp tục bước 4.
+- **A2 – Hủy chọn vị trí:** Tại bước 3–5, chủ tiệm nhấn "Quay lại"; hệ thống đóng bản đồ, form UC-09 giữ nguyên vị trí cũ.
+
+**Luồng sự kiện ngoại lệ**
+
+- **E1 – Không cấp quyền vị trí:** Tại bước 2, nếu chưa có quyền truy cập vị trí, hệ thống yêu cầu cấp quyền; nếu chủ tiệm từ chối, bản đồ đặt tâm mặc định và chủ tiệm định vị thủ công theo luồng A1.
+- **E2 – Reverse Geocoding thất bại:** Tại bước 4, nếu API lỗi hoặc không có kết quả, hệ thống hiển thị *"Không xác định được địa chỉ, vui lòng nhập địa chỉ thủ công"* và cho phép chủ tiệm tự nhập địa chỉ (tọa độ vẫn được giữ).
+- **E3 – Vị trí ngoài phạm vi phục vụ:** Tại bước 5, nếu tọa độ nằm ngoài lãnh thổ Việt Nam, hệ thống báo *"Vị trí không nằm trong phạm vi phục vụ"* và không cho xác nhận.
+- **E4 – Mất kết nối mạng:** Tại bước 2, bản đồ không tải được, hệ thống báo lỗi kết nối và hiển thị nút "Thử lại".
+
+---
+
