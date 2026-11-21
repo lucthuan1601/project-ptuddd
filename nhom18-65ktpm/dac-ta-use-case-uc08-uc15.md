@@ -371,3 +371,64 @@
 
 ---
 
+## 4.14 Bảng đặc tả UC-14: Quản lý tài khoản, Tiệm & Tình nguyện viên
+
+| Mục | Nội dung |
+| --- | --- |
+| Tên use case | Quản lý tài khoản, Tiệm & Tình nguyện viên (UC-14) |
+| Tác nhân chính | Admin (Quản trị viên hệ thống) |
+| Mục đích (mô tả) | Cung cấp công cụ để Admin phê duyệt/từ chối hồ sơ tiệm và hồ sơ TNV mới đăng ký, đồng thời khóa hoặc mở khóa tài khoản/tiệm khi phát hiện vi phạm. |
+| Mức độ ưu tiên | Cao |
+| Điều kiện kích hoạt | Admin chọn mục "Quản lý tài khoản, Tiệm & TNV" trên Admin Dashboard. |
+| Điều kiện tiên quyết | Admin đã đăng nhập với tài khoản `role = 'admin'`. |
+| Điều kiện thành công | Trạng thái hồ sơ tiệm/TNV chuyển thành `approved` hoặc `rejected`; tài khoản vi phạm chuyển `banned` (hoặc `active` khi mở khóa); người liên quan nhận được thông báo. |
+| Điều kiện thất bại | Không thực hiện được thao tác do không đủ quyền, hồ sơ đã được Admin khác xử lý hoặc lỗi mạng; trạng thái cũ giữ nguyên. |
+
+**Đầu vào (Input)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Bắt buộc | Ràng buộc / Định dạng | Nguồn |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Mã Admin (`admin_id`) | UUID | Có | `role = 'admin'` (kiểm tra bằng RLS) | Hệ thống (phiên đăng nhập) |
+| 2 | Bộ lọc danh sách | Enum + Chuỗi | Không | Loại: Tiệm / TNV / Tài khoản; Trạng thái: pending / approved / rejected / banned; từ khóa tên, email, SĐT | Người dùng chọn/nhập |
+| 3 | Đối tượng xử lý: `shop_id` / `volunteer_profiles.id` / `user_id` | UUID | Có | Tồn tại trong bảng tương ứng | Người dùng chọn từ danh sách |
+| 4 | Hành động | Enum | Có | `approve` / `reject` / `ban` / `unban` | Người dùng nhấn nút |
+| 5 | Lý do | TEXT | Có khi `reject` hoặc `ban` | 5–300 ký tự | Người dùng nhập |
+
+**Đầu ra (Output)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Đích | Mô tả |
+| --- | --- | --- | --- | --- |
+| 1 | Danh sách hồ sơ chờ duyệt và danh sách tài khoản | Danh sách bản ghi `shops`, `volunteer_profiles`, `users` | UI | Hiển thị theo bộ lọc, kèm số lượng chờ duyệt |
+| 2 | Chi tiết hồ sơ (tên, ảnh mặt tiền/giấy tờ xác minh, SĐT, địa chỉ/vị trí, kỹ năng, ngày đăng ký) | Giao diện | UI | Phục vụ Admin kiểm tra |
+| 3 | `shops.status` hoặc `volunteer_profiles.status` mới | VARCHAR(20) | CSDL | `'approved'` hoặc `'rejected'` |
+| 4 | `users.status` mới (kèm `status` của tiệm/hồ sơ TNV liên quan) | VARCHAR(20) | CSDL | `'banned'` khi khóa; `'active'` (và khôi phục `'approved'`) khi mở khóa |
+| 5 | `shops.is_open = false` / `volunteer_profiles.is_available = false` | BOOLEAN | CSDL | Khi khóa, tiệm bị ẩn khỏi bản đồ và ngừng nhận SOS |
+| 6 | Thông báo kết quả kèm lý do | FCM | App chủ tiệm / TNV / người bị khóa | VD: "Tiệm của bạn đã được phê duyệt", "Hồ sơ bị từ chối: Giấy tờ không rõ ràng" |
+| 7 | Thông báo thao tác thành công | Chuỗi (SnackBar) | UI Admin | Danh sách được làm mới |
+
+**Luồng sự kiện chính** (Phê duyệt hồ sơ)
+
+1. Admin chọn mục "Quản lý tài khoản, Tiệm & TNV".
+2. Hệ thống tải danh sách tiệm chờ duyệt, hồ sơ TNV chờ duyệt và danh sách tài khoản.
+3. Admin chọn một hồ sơ chờ duyệt để xem chi tiết.
+4. Admin kiểm tra thông tin và nhấn "Phê duyệt".
+5. Hệ thống cập nhật `status = 'approved'` trong `shops` hoặc `volunteer_profiles` (chỉ khi hồ sơ đang `pending`).
+6. Hệ thống gửi thông báo tới chủ tiệm/TNV liên quan.
+7. Tiệm được hiển thị công khai trên bản đồ; TNV được phép bật trạng thái sẵn sàng (UC-11) và nhận SOS.
+
+**Luồng sự kiện thay thế**
+
+- **A1 – Từ chối hồ sơ:** Tại bước 4, Admin chọn "Từ chối" và nhập lý do (VD: "Địa chỉ không chính xác", "Giấy tờ không rõ ràng"). Hệ thống cập nhật `status = 'rejected'` và gửi lý do tới tài khoản liên quan.
+- **A2 – Khóa tài khoản vi phạm:** Admin chọn tài khoản/tiệm bị phản ánh, nhấn "Khóa tài khoản", nhập lý do và xác nhận. Hệ thống cập nhật `users.status = 'banned'`, chuyển tiệm/hồ sơ TNV liên quan sang `'banned'`, đặt `is_open`/`is_available = false`, ẩn tiệm khỏi bản đồ và ngừng gửi SOS.
+- **A3 – Mở khóa tài khoản:** Admin chọn tài khoản `banned`, nhấn "Mở khóa" và xác nhận. Hệ thống khôi phục `users.status = 'active'` và trạng thái `'approved'` của tiệm/hồ sơ TNV liên quan.
+
+**Luồng sự kiện ngoại lệ**
+
+- **E1 – Không đủ quyền:** Nếu tài khoản thực hiện không có `role = 'admin'`, chính sách RLS từ chối và hệ thống báo *"Bạn không có quyền thực hiện thao tác này"*.
+- **E2 – Thiếu lý do:** Tại A1/A2, nếu chưa nhập lý do, hệ thống báo *"Vui lòng nhập lý do"* và không thực hiện thao tác.
+- **E3 – Hồ sơ đã được xử lý:** Tại bước 5, nếu hồ sơ không còn `pending` (Admin khác đã xử lý), hệ thống báo *"Hồ sơ này đã được xử lý"* và làm mới danh sách.
+- **E4 – Khóa tài khoản đang xử lý SOS:** Tại A2, nếu người bị khóa đang có ca SOS `accepted`, hệ thống cảnh báo và chuyển ca đó về `pending` để người khác tiếp nhận trước khi khóa.
+- **E5 – Mất kết nối mạng:** Hệ thống báo lỗi và giữ nguyên trạng thái cũ của hồ sơ/tài khoản.
+
+---
+
