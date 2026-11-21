@@ -192,3 +192,59 @@
 
 ---
 
+## 4.11 Bảng đặc tả UC-11: Cập nhật trạng thái hoạt động
+
+| Mục | Nội dung |
+| --- | --- |
+| Tên use case | Cập nhật trạng thái hoạt động (UC-11) |
+| Tác nhân chính | Shop Owner (Chủ tiệm), Volunteer (Tình nguyện viên) |
+| Mục đích (mô tả) | Cung cấp công tắc chuyển nhanh trạng thái hoạt động theo thời gian thực: Chủ tiệm bật/tắt "Đang mở cửa / Tạm đóng cửa" (`shops.is_open`); Tình nguyện viên bật/tắt "Sẵn sàng hỗ trợ / Tạm nghỉ" (`volunteer_profiles.is_available`). Trạng thái quyết định việc tiệm hiển thị là mở trên bản đồ và việc nhận thông báo SOS. |
+| Mức độ ưu tiên | Trung bình |
+| Điều kiện kích hoạt | Chủ tiệm hoặc Tình nguyện viên gạt công tắc trạng thái trên màn hình Bảng điều khiển (Dashboard). |
+| Điều kiện tiên quyết | Đã đăng nhập; tiệm (Owner) hoặc hồ sơ TNV (Volunteer) có `status = 'approved'`; tài khoản `status = 'active'`. Với Volunteer: đã cấp quyền vị trí (UC-02). |
+| Điều kiện thành công | Trường `is_open` hoặc `is_available` được cập nhật; Marker tiệm trên bản đồ Rider đổi trạng thái qua Supabase Realtime; TNV sẵn sàng được đưa vào danh sách nhận SOS (UC-07, UC-12). |
+| Điều kiện thất bại | Không cập nhật được do mất mạng, hồ sơ chưa duyệt hoặc đang có ca SOS chưa hoàn thành; công tắc trở về trạng thái cũ. |
+
+**Đầu vào (Input)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Bắt buộc | Ràng buộc / Định dạng | Nguồn |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Mã người dùng (`user_id`) và vai trò (`role`) | UUID, VARCHAR | Có | `role` ∈ {`'owner'`, `'volunteer'`} | Hệ thống (phiên đăng nhập) |
+| 2 | Mã tiệm (`shop_id`) | UUID | Có (Owner) | Tiệm thuộc sở hữu của người dùng, `status = 'approved'` | CSDL |
+| 3 | Mã hồ sơ TNV (`volunteer_profiles.id`) | UUID | Có (Volunteer) | Hồ sơ của người dùng, `status = 'approved'` | CSDL |
+| 4 | Trạng thái mới (`is_open` hoặc `is_available`) | BOOLEAN | Có | `true` / `false` | Người dùng gạt Toggle Switch |
+| 5 | Vị trí GPS hiện tại | (lat, lng) DOUBLE | Có (Volunteer bật sẵn sàng) | Lấy tại thời điểm bật công tắc | Hệ thống (Geolocator – UC-02) |
+
+**Đầu ra (Output)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Đích | Mô tả |
+| --- | --- | --- | --- | --- |
+| 1 | `shops.is_open` mới | BOOLEAN | CSDL | Trạng thái mở/đóng cửa của tiệm (Owner) |
+| 2 | `volunteer_profiles.is_available` mới | BOOLEAN | CSDL | Trạng thái sẵn sàng nhận SOS (Volunteer) |
+| 3 | `volunteer_profiles.location` mới | GEOGRAPHY(Point, 4326) | CSDL | Vị trí hiện tại của TNV, dùng cho hàm `get_nearby_volunteers` |
+| 4 | Sự kiện thay đổi bảng `shops` | Realtime event | Realtime → App Rider | Marker tiệm đổi màu/nhãn "Đang mở cửa" ↔ "Đóng cửa" |
+| 5 | Nhãn trạng thái và SnackBar "Cập nhật trạng thái thành công" | Giao diện | UI | Hiển thị cho chủ tiệm/TNV |
+
+**Luồng sự kiện chính** (Chủ tiệm)
+
+1. Chủ tiệm mở Bảng điều khiển quản lý tiệm.
+2. Hệ thống hiển thị công tắc trạng thái hiện tại (`is_open`).
+3. Chủ tiệm gạt công tắc để đổi trạng thái (VD: chuyển sang "Tạm đóng cửa" khi nghỉ đột xuất).
+4. Hệ thống kiểm tra chủ tiệm không có ca SOS đang ở trạng thái `accepted` (khi chuyển sang đóng cửa).
+5. Hệ thống cập nhật `shops.is_open` trên Supabase PostgreSQL.
+6. Supabase Realtime đẩy thay đổi tới các ứng dụng Rider đang mở bản đồ; Marker tiệm được cập nhật.
+7. Hệ thống hiển thị SnackBar xác nhận cập nhật thành công.
+
+**Luồng sự kiện thay thế**
+
+- **A1 – Tình nguyện viên bật/tắt sẵn sàng:** Tại bước 3, nếu người dùng là Volunteer, hệ thống lấy vị trí GPS hiện tại và cập nhật `volunteer_profiles.is_available` cùng `location`. Chỉ TNV có `is_available = true` mới nhận SOS; vị trí TNV không hiển thị công khai trên bản đồ để bảo vệ quyền riêng tư. Khi TNV tắt sẵn sàng, hệ thống ngừng gửi SOS tới thiết bị đó.
+
+**Luồng sự kiện ngoại lệ**
+
+- **E1 – Mất kết nối mạng:** Tại bước 5, công tắc trở về vị trí cũ và hệ thống báo *"Lỗi kết nối, không thể cập nhật trạng thái"*.
+- **E2 – Đang xử lý ca cứu hộ:** Tại bước 4, nếu có ca SOS `accepted` chưa hoàn thành, hệ thống báo *"Vui lòng hoàn thành ca cứu hộ đang xử lý trước khi tạm nghỉ"* và giữ nguyên trạng thái.
+- **E3 – Hồ sơ chưa được duyệt hoặc bị khóa:** Tại bước 2, công tắc bị vô hiệu hóa kèm ghi chú *"Hồ sơ đang chờ phê duyệt"* hoặc *"Hồ sơ đã bị khóa"*.
+- **E4 – Không lấy được GPS (Volunteer):** Tại luồng A1, nếu không lấy được vị trí, hệ thống báo *"Không xác định được vị trí, vui lòng bật GPS"* và không bật trạng thái sẵn sàng.
+
+---
+
