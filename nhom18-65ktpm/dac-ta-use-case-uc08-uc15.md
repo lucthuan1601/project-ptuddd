@@ -432,3 +432,60 @@
 
 ---
 
+## 4.15 Bảng đặc tả UC-15: Thống kê hệ thống
+
+| Mục | Nội dung |
+| --- | --- |
+| Tên use case | Thống kê hệ thống (UC-15) |
+| Tác nhân chính | Admin (Quản trị viên hệ thống) |
+| Mục đích (mô tả) | Cung cấp báo cáo số liệu tổng quan và biểu đồ trực quan về hoạt động của ứng dụng: số người dùng theo vai trò, số tiệm sửa xe/cây xăng, số TNV, số lượt SOS và tỷ lệ hoàn thành, thời gian phản hồi trung bình. |
+| Mức độ ưu tiên | Trung bình |
+| Điều kiện kích hoạt | Admin chọn chức năng "Báo cáo thống kê" trên menu quản trị. |
+| Điều kiện tiên quyết | Admin đã đăng nhập với `role = 'admin'`. |
+| Điều kiện thành công | Chỉ số KPI và biểu đồ được tính toán, hiển thị đúng theo khoảng thời gian đã chọn; tệp báo cáo được xuất thành công (nếu Admin yêu cầu). |
+| Điều kiện thất bại | Không tải được dữ liệu do lỗi truy vấn, khoảng thời gian không hợp lệ hoặc mất kết nối. |
+
+**Đầu vào (Input)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Bắt buộc | Ràng buộc / Định dạng | Nguồn |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Mã Admin (`admin_id`) | UUID | Có | `role = 'admin'` | Hệ thống (phiên đăng nhập) |
+| 2 | Khoảng thời gian | Enum hoặc (from_date, to_date) DATE | Có | 7 ngày / 30 ngày (mặc định) / Tháng hiện tại / Tùy chọn; `from_date ≤ to_date ≤ hôm nay`, tối đa 365 ngày | Người dùng chọn |
+| 3 | Tiêu chí thống kê | Enum | Không | Người dùng / Tiệm & Cây xăng / TNV / Lượt SOS (mặc định: tất cả) | Người dùng chọn |
+| 4 | Đơn vị nhóm theo thời gian | Enum | Không | Ngày / Tuần / Tháng (tự chọn theo độ dài khoảng thời gian) | Người dùng chọn / Hệ thống |
+| 5 | Lệnh xuất dữ liệu | Thao tác nhấn nút | Không | Định dạng CSV | Người dùng nhấn "Xuất dữ liệu" |
+| 6 | Dữ liệu nguồn từ `users`, `shops`, `volunteer_profiles`, `sos_requests`, `reviews` | Bản ghi | Có | Lọc theo `created_at` trong khoảng thời gian | CSDL |
+
+**Đầu ra (Output)**
+
+| STT | Dữ liệu | Kiểu dữ liệu | Đích | Mô tả |
+| --- | --- | --- | --- | --- |
+| 1 | Thẻ KPI người dùng | Số nguyên | UI | Tổng người dùng, người dùng mới trong kỳ, phân theo vai trò (Rider/Owner/Volunteer), số tài khoản bị khóa |
+| 2 | Thẻ KPI địa điểm | Số nguyên | UI | Số tiệm sửa xe, số cây xăng đã duyệt, số hồ sơ chờ duyệt, số tiệm đang mở cửa |
+| 3 | Thẻ KPI tình nguyện viên | Số nguyên | UI | Số TNV đã duyệt, số TNV đang sẵn sàng, số hồ sơ chờ duyệt |
+| 4 | Thẻ KPI cứu hộ SOS | Số nguyên, % , phút | UI | Tổng lượt SOS, số ca `completed` / `cancelled` / `pending`, tỷ lệ hoàn thành (%), thời gian từ lúc tạo đến lúc tiếp nhận trung bình (phút) |
+| 5 | Biểu đồ đường lượt SOS theo thời gian | Chuỗi thời gian | UI | Phân tách ca do Tiệm và ca do TNV tiếp nhận |
+| 6 | Biểu đồ cột người dùng/tiệm/TNV mới theo thời gian | Chuỗi thời gian | UI | Theo đơn vị nhóm đã chọn |
+| 7 | Bảng xếp hạng top 5 tiệm và top 5 TNV | Danh sách | UI | Theo số ca SOS hoàn thành và điểm `rating` |
+| 8 | Tệp báo cáo `thong-ke_<from>_<to>.csv` | Tệp CSV (UTF-8) | Thiết bị Admin | Chứa toàn bộ chỉ số và dữ liệu chuỗi thời gian của kỳ đã chọn |
+
+**Luồng sự kiện chính**
+
+1. Admin chọn "Báo cáo thống kê" trên menu quản trị.
+2. Hệ thống mặc định truy vấn dữ liệu 30 ngày gần nhất.
+3. Admin thay đổi bộ lọc thời gian và/hoặc tiêu chí thống kê (VD: "Tháng hiện tại").
+4. Hệ thống gọi các hàm RPC tổng hợp (COUNT, AVG, GROUP BY theo thời gian) trên các bảng `users`, `shops`, `volunteer_profiles`, `sos_requests`, `reviews`.
+5. Hệ thống tính các chỉ số KPI, xử lý dữ liệu chuỗi thời gian và vẽ biểu đồ.
+6. Admin xem báo cáo.
+
+**Luồng sự kiện thay thế**
+
+- **A1 – Xuất dữ liệu:** Tại bước 6, Admin nhấn "Xuất dữ liệu"; hệ thống sinh tệp CSV cho kỳ đang xem, lưu vào thiết bị và báo *"Đã xuất báo cáo thành công"*.
+- **A2 – Xem chi tiết một chỉ số:** Admin nhấn vào một thẻ KPI (VD: "Hồ sơ chờ duyệt"); hệ thống chuyển tới danh sách tương ứng trong UC-14.
+
+**Luồng sự kiện ngoại lệ**
+
+- **E1 – Không có dữ liệu:** Tại bước 5, nếu kỳ đã chọn không phát sinh dữ liệu, hệ thống báo *"Không có dữ liệu trong khoảng thời gian đã chọn"* và đưa các thẻ KPI về 0.
+- **E2 – Khoảng thời gian không hợp lệ:** Tại bước 3, nếu ngày bắt đầu sau ngày kết thúc hoặc vượt quá 365 ngày, hệ thống báo *"Khoảng thời gian không hợp lệ"* và không truy vấn.
+- **E3 – Không đủ quyền:** Nếu tài khoản không có `role = 'admin'`, RLS từ chối truy vấn và hệ thống báo *"Bạn không có quyền xem báo cáo"*.
+- **E4 – Lỗi truy vấn / mất kết nối / xuất tệp thất bại:** Hệ thống báo *"Không thể tải dữ liệu báo cáo, vui lòng thử lại"* (hoặc *"Không thể xuất tệp báo cáo"*) kèm nút "Thử lại".
