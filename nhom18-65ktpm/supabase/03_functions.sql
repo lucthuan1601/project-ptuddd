@@ -9,7 +9,7 @@ create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_role text := coalesce(new.raw_user_meta_data ->> 'role', 'rider');
@@ -64,7 +64,7 @@ create or replace function public.protect_user_columns()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if current_user::text not in ('authenticated', 'anon') then
@@ -91,7 +91,7 @@ create or replace function public.protect_shop_columns()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if current_user::text not in ('authenticated', 'anon') then
@@ -119,7 +119,7 @@ create or replace function public.protect_volunteer_columns()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if current_user::text not in ('authenticated', 'anon') then
@@ -149,7 +149,7 @@ create or replace function public.refresh_shop_rating()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_shop uuid := coalesce(new.shop_id, old.shop_id);
@@ -205,7 +205,7 @@ returns table (
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select
     s.id,
@@ -254,7 +254,7 @@ returns table (
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select
     vp.id,
@@ -292,7 +292,7 @@ create or replace function public.accept_sos(
 returns public.sos_requests
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_row public.sos_requests;
@@ -341,7 +341,7 @@ create or replace function public.complete_sos(p_sos_id uuid)
 returns public.sos_requests
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_row public.sos_requests;
@@ -381,7 +381,7 @@ returns table (provider_name text, provider_phone text)
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_sos public.sos_requests;
