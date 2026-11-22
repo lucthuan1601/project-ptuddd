@@ -19,3 +19,12 @@ begin
     alter publication supabase_realtime add table public.sos_requests;
   end if;
 end $$;
+
+-- ============================================================
+-- 2. Sửa trigger bảo vệ cột trong 03_functions.sql
+-- Hàm security definer luôn thấy current_user = postgres nên điều kiện
+-- "current_user in (authenticated, anon)" không bao giờ đúng: client tự đổi
+-- được role/status/rating. Chạy với quyền người gọi thì trigger mới có tác dụng.
+-- ============================================================
+alter function public.protect_user_columns() security invoker;
+alter function public.protect_shop_columns() security invoker;
