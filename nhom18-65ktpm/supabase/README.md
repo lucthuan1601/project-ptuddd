@@ -9,6 +9,9 @@ Chạy lần lượt trong **Supabase Dashboard → SQL Editor**:
 | `03_functions.sql` | Trigger tạo hồ sơ, trigger bảo vệ cột, RPC tìm quanh đây / nhận ca |
 | `04_storage.sql` | Bucket ảnh tiệm, avatar, giấy tờ TNV + policy |
 | `05_seed.sql` | Dữ liệu mẫu (10 tiệm quanh Hà Nội, 2 TNV, review) |
+| `06_sos_volunteer.sql` | Realtime SOS, quy tắc hồ sơ TNV, khóa ca, hộp thư SOS, FCM |
+
+DB đã chạy 01–05 từ trước thì chỉ cần chạy thêm `06_sos_volunteer.sql`.
 
 ## Trước khi chạy `05_seed.sql`
 
