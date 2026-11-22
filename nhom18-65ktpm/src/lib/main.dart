@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/auth_gate.dart';
 import 'core/env.dart';
+import 'core/push_service.dart';
 import 'core/theme.dart';
 
 Future<void> main() async {
@@ -17,6 +18,7 @@ Future<void> main() async {
     url: Env.supabaseUrl,
     publishableKey: Env.supabaseAnonKey,
   );
+  await PushService.initialize();
   runApp(const App());
 }
 
