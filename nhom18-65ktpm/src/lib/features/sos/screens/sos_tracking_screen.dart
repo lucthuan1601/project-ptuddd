@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../models/sos_request.dart';
 import '../../../repositories/auth_repository.dart';
+import '../../../repositories/shop_repository.dart';
 import '../../../repositories/sos_repository.dart';
+import '../../review/widgets/review_form.dart';
 import '../data/supabase_sos_repository.dart';
 import '../sos_actions.dart';
 
@@ -25,6 +27,17 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
 
   void _retry() {
     setState(() => _stream = _repo.watchById(widget.sosId));
+  }
+
+  Future<void> _review(String shopId) async {
+    String shopName = 'Tiệm đã hỗ trợ bạn';
+    try {
+      shopName = (await ShopRepository().byId(shopId))?.name ?? shopName;
+    } catch (_) {
+      // Không lấy được tên tiệm vẫn cho đánh giá.
+    }
+    if (!mounted) return;
+    await showReviewSheet(context, shopId: shopId, shopName: shopName);
   }
 
   Future<void> _cancel() async {
@@ -100,9 +113,18 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
                 _contact ??= _repo.contact(sos.id);
                 return _Accepted(contact: _contact!);
               case 'completed':
-                return const _Message(
+                final shopId = sos.acceptedShopId;
+                return _Message(
                   icon: Icons.check_circle,
                   text: 'Ca cứu hộ đã hoàn thành. Chúc bạn thượng lộ bình an!',
+                  // UC-12 bước 8: ca do tiệm hỗ trợ thì gợi ý đánh giá (UC-08).
+                  action: shopId == null
+                      ? null
+                      : FilledButton.icon(
+                          onPressed: () => _review(shopId),
+                          icon: const Icon(Icons.star),
+                          label: const Text('Đánh giá dịch vụ'),
+                        ),
                 );
               default:
                 return const _Message(
