@@ -11,7 +11,18 @@ Flutter + Supabase (Auth, Postgres/PostGIS, Storage, Realtime) + Google Maps. Ch
 - UC-01: đăng nhập / đăng ký / chặn tài khoản bị khóa / điều hướng theo vai trò.
 - 4 shell rỗng để từng người thay nội dung.
 
-Chưa có (đúng phân công): bản đồ & tìm kiếm, gọi điện/chỉ đường, SOS, đánh giá, chủ tiệm, tình nguyện viên, admin, FCM.
+Chưa có (đúng phân công): bản đồ & tìm kiếm, gọi điện/chỉ đường, chủ tiệm, admin.
+
+Đã có thêm (nhánh `feat/tung-sos-volunteer`, cần chạy `../supabase/06_sos_volunteer.sql`):
+
+- UC-07: nút SOS trên màn rider → `features/sos/screens/sos_request_screen.dart`, theo dõi ca realtime, hủy ca.
+- UC-08: `features/review/` (repository + `showReviewSheet`), tự gợi ý sau khi tiệm hoàn thành ca.
+  Hiếu/Quân mở đánh giá từ trang chi tiết tiệm bằng `showReviewSheet(context, shopId: ..., shopName: ...)`.
+- UC-11 (TNV), UC-12, UC-13: `VolunteerShell` + `features/volunteer/`.
+- UC-12 cho chủ tiệm: Hiếu đặt widget `SosInbox()` (`features/sos/widgets/sos_inbox.dart`) vào màn chủ tiệm
+  và gọi `PushService.register()` khi mở màn đó. Hộp thư tự chọn tiệm gần ca nhất của chủ để nhận.
+- FCM: `core/push_service.dart` + Edge Function `../supabase/functions/notify-sos`
+  (tùy chọn, hướng dẫn ở `../supabase/README.md`).
 
 ## Chạy lần đầu
 
