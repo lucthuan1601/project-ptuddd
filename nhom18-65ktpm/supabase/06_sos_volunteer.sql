@@ -163,3 +163,77 @@ begin
   return v_row;
 end;
 $$;
+
+-- ============================================================
+-- 5. Hộp thư SOS của người nhận (UC-12)
+-- Trả các ca đang chờ mà người gọi được phép nhận, kèm khoảng cách và
+-- id tiệm / hồ sơ TNV để truyền thẳng vào accept_sos.
+-- Quy tắc trùng với get_sos_recipients (người nhận FCM, mục 6):
+-- - TNV: đã duyệt, đang sẵn sàng, ca nằm trong service_radius_km.
+-- - Tiệm: đã duyệt, đang mở cửa, trong 5 km; cây xăng chỉ nhận ca "Hết xăng".
+-- ============================================================
+create or replace function public.get_my_pending_sos()
+returns table (
+  id uuid,
+  rider_id uuid,
+  issue_type varchar,
+  note text,
+  contact_phone varchar,
+  latitude double precision,
+  longitude double precision,
+  status varchar,
+  created_at timestamptz,
+  distance_m double precision,
+  shop_id uuid,
+  volunteer_id uuid
+)
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  with me as (
+    select u.id from public.users u where u.id = auth.uid() and u.status = 'active'
+  ),
+  pending as (
+    select r.*,
+           st_setsrid(st_makepoint(r.longitude, r.latitude), 4326)::geography as point
+      from public.sos_requests r
+     where r.status = 'pending'
+       and r.rider_id <> auth.uid()
+  ),
+  candidates as (
+    select p.id, st_distance(vp.location, p.point) as distance_m,
+           null::uuid as shop_id, vp.id as volunteer_id
+      from pending p
+      join public.volunteer_profiles vp on vp.user_id = (select id from me)
+     where vp.status = 'approved'
+       and vp.is_available
+       and vp.location is not null
+       and st_dwithin(vp.location, p.point, vp.service_radius_km * 1000)
+    union all
+    select p.id, st_distance(s.location, p.point),
+           s.id, null::uuid
+      from pending p
+      join public.shops s on s.owner_id = (select id from me)
+     where s.status = 'approved'
+       and s.is_open
+       and (s.category = 'repair_shop' or p.issue_type = 'Hết xăng')
+       and st_dwithin(s.location, p.point, 5000)
+  ),
+  nearest as (
+    -- Chủ có nhiều tiệm: lấy tiệm gần ca nhất.
+    select distinct on (c.id) c.*
+      from candidates c
+     order by c.id, c.distance_m
+  )
+  select p.id, p.rider_id, p.issue_type, p.note, p.contact_phone,
+         p.latitude, p.longitude, p.status, p.created_at,
+         n.distance_m, n.shop_id, n.volunteer_id
+    from nearest n
+    join pending p on p.id = n.id
+   order by p.created_at desc;
+$$;
+
+revoke all on function public.get_my_pending_sos() from public, anon;
+grant execute on function public.get_my_pending_sos() to authenticated;
