@@ -76,3 +76,90 @@ begin
   return new;
 end;
 $$;
+
+-- ============================================================
+-- 4. Khóa ca: mỗi tiệm / TNV chỉ xử lý một ca tại một thời điểm (UC-12)
+-- Thay accept_sos trong 03_functions.sql (giữ nguyên chữ ký hàm).
+-- ============================================================
+create unique index if not exists sos_one_active_shop
+  on public.sos_requests (accepted_shop_id)
+  where status = 'accepted';
+
+create unique index if not exists sos_one_active_volunteer
+  on public.sos_requests (accepted_volunteer_id)
+  where status = 'accepted';
+
+create or replace function public.accept_sos(
+  p_sos_id uuid,
+  p_shop_id uuid default null,
+  p_volunteer_id uuid default null
+)
+returns public.sos_requests
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_row public.sos_requests;
+begin
+  if (p_shop_id is null) = (p_volunteer_id is null) then
+    raise exception 'Phải truyền đúng một trong p_shop_id hoặc p_volunteer_id';
+  end if;
+
+  if exists (
+    select 1 from public.users where id = auth.uid() and status = 'banned'
+  ) then
+    raise exception 'Tài khoản của bạn đã bị khóa';
+  end if;
+
+  if p_shop_id is not null and not exists (
+    select 1 from public.shops
+     where id = p_shop_id
+       and owner_id = auth.uid()
+       and status = 'approved'
+       and is_open
+  ) then
+    raise exception 'Bạn không sở hữu tiệm này, tiệm chưa được duyệt hoặc đang đóng cửa';
+  end if;
+
+  if p_volunteer_id is not null and not exists (
+    select 1 from public.volunteer_profiles
+     where id = p_volunteer_id
+       and user_id = auth.uid()
+       and status = 'approved'
+       and is_available
+  ) then
+    raise exception 'Hồ sơ tình nguyện viên chưa được duyệt hoặc chưa sẵn sàng';
+  end if;
+
+  if exists (
+    select 1 from public.sos_requests
+     where status = 'accepted'
+       and (accepted_shop_id = p_shop_id or accepted_volunteer_id = p_volunteer_id)
+  ) then
+    raise exception 'Bạn đang xử lý một ca cứu hộ khác, hãy hoàn thành ca đó trước';
+  end if;
+
+  begin
+    -- Câu lệnh có điều kiện status = 'pending': người thứ hai UPDATE sẽ không khớp dòng nào.
+    update public.sos_requests
+       set status = 'accepted',
+           accepted_shop_id = p_shop_id,
+           accepted_volunteer_id = p_volunteer_id
+     where id = p_sos_id
+       and status = 'pending'
+       and rider_id <> auth.uid()
+    returning * into v_row;
+  exception
+    -- Hai lần nhận gần như đồng thời của cùng một người: index unique chặn lại.
+    when unique_violation then
+      raise exception 'Bạn đang xử lý một ca cứu hộ khác, hãy hoàn thành ca đó trước';
+  end;
+
+  if v_row.id is null then
+    raise exception 'Ca cứu hộ đã được người khác nhận hoặc không còn hiệu lực';
+  end if;
+
+  return v_row;
+end;
+$$;
