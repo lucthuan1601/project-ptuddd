@@ -34,7 +34,7 @@ alter function public.protect_shop_columns() security invoker;
 -- Thay hàm cùng tên trong 03_functions.sql (trigger cũ tự dùng bản mới),
 -- chạy với quyền người gọi giống mục 2.
 -- - Đổi SĐT / giấy tờ khi đã duyệt -> chờ duyệt lại.
--- - Hồ sơ bị từ chối mà sửa lại -> gửi duyệt lại.
+-- - Hồ sơ bị từ chối mà sửa nội dung -> gửi duyệt lại (chỉ cập nhật vị trí thì không).
 -- - Không tắt "sẵn sàng" khi đang có ca SOS chưa hoàn thành.
 -- - Hồ sơ chưa duyệt / bị khóa thì không được ở trạng thái sẵn sàng.
 -- ============================================================
@@ -51,7 +51,10 @@ begin
     new.completed_count := old.completed_count;
     new.created_at := old.created_at;
 
-    if old.status = 'rejected' then
+    if old.status = 'rejected'
+       and (new.phone, new.skills, new.tools, new.id_card_url, new.service_radius_km)
+           is distinct from
+           (old.phone, old.skills, old.tools, old.id_card_url, old.service_radius_km) then
       new.status := 'pending';
     elsif old.status = 'approved'
        and (new.phone is distinct from old.phone
