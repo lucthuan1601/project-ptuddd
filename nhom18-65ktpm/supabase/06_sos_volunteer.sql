@@ -237,3 +237,82 @@ $$;
 
 revoke all on function public.get_my_pending_sos() from public, anon;
 grant execute on function public.get_my_pending_sos() to authenticated;
+
+-- ============================================================
+-- 6. FCM: lưu token thiết bị và lấy danh sách người cần báo
+-- ============================================================
+-- Một thiết bị chỉ thuộc một tài khoản: gỡ token khỏi tài khoản cũ trên cùng máy.
+-- Truyền null khi đăng xuất để thiết bị ngừng nhận SOS.
+create or replace function public.set_fcm_token(p_token text)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Chưa đăng nhập';
+  end if;
+
+  if nullif(p_token, '') is not null then
+    update public.users
+       set fcm_token = null
+     where fcm_token = p_token
+       and id <> auth.uid();
+  end if;
+
+  update public.users
+     set fcm_token = nullif(p_token, '')
+   where id = auth.uid();
+end;
+$$;
+
+revoke all on function public.set_fcm_token(text) from public, anon;
+grant execute on function public.set_fcm_token(text) to authenticated;
+
+-- Edge Function notify-sos gọi bằng service_role khi có ca mới.
+create or replace function public.get_sos_recipients(p_sos_id uuid)
+returns table (user_id uuid, fcm_token text)
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  with sos as (
+    select r.*,
+           st_setsrid(st_makepoint(r.longitude, r.latitude), 4326)::geography as point
+      from public.sos_requests r
+     where r.id = p_sos_id
+       and r.status = 'pending'
+  ),
+  recipients as (
+    select u.id as user_id, u.fcm_token
+      from sos
+      join public.volunteer_profiles vp
+        on vp.status = 'approved'
+       and vp.is_available
+       and vp.location is not null
+       and st_dwithin(vp.location, sos.point, vp.service_radius_km * 1000)
+      join public.users u on u.id = vp.user_id
+     where u.id <> sos.rider_id
+       and u.status = 'active'
+    union all
+    select u.id, u.fcm_token
+      from sos
+      join public.shops s
+        on s.status = 'approved'
+       and s.is_open
+       and (s.category = 'repair_shop' or sos.issue_type = 'Hết xăng')
+       and st_dwithin(s.location, sos.point, 5000)
+      join public.users u on u.id = s.owner_id
+     where u.id <> sos.rider_id
+       and u.status = 'active'
+  )
+  select distinct on (r.fcm_token) r.user_id, r.fcm_token
+    from recipients r
+   where coalesce(r.fcm_token, '') <> ''
+   order by r.fcm_token;
+$$;
+
+revoke all on function public.get_sos_recipients(uuid) from public, anon, authenticated;
+grant execute on function public.get_sos_recipients(uuid) to service_role;
