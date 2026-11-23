@@ -21,6 +21,14 @@ $$;
 
 grant execute on function public.is_admin() to authenticated;
 
+-- Cấp quyền mức bảng cho role authenticated (Postgres kiểm tra GRANT trước khi kiểm tra RLS).
+grant usage on schema public to authenticated;
+grant select, update, delete on public.users to authenticated;
+grant select, insert, update, delete on public.shops to authenticated;
+grant select, insert, update, delete on public.volunteer_profiles to authenticated;
+grant select, insert, update on public.sos_requests to authenticated;
+grant select, insert, update, delete on public.reviews to authenticated;
+
 alter table public.users enable row level security;
 alter table public.shops enable row level security;
 alter table public.volunteer_profiles enable row level security;
