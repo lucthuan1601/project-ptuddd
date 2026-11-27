@@ -38,7 +38,8 @@ void main() {
       'is_open': true,
       'rating': 4,
       'review_count': 2,
-      'status': 'approved',
+      'status': 'rejected',
+      'rejection_reason': 'Địa chỉ chưa rõ ràng',
       'distance_m': 1234.5,
     });
 
@@ -46,6 +47,7 @@ void main() {
     expect(shop.reviewCount, 2);
     expect(shop.distanceM, 1234.5);
     expect(shop.isOpen, isTrue);
+    expect(shop.rejectionReason, 'Địa chỉ chưa rõ ràng');
   });
 
   test('SosRequest.fromMap mặc định status pending', () {
@@ -72,13 +74,15 @@ void main() {
       'id_card_url': 'seed/cccd.jpg',
       'service_radius_km': 10,
       'is_available': true,
-      'status': 'approved',
+      'status': 'rejected',
+      'rejection_reason': 'Ảnh giấy tờ bị mờ',
       'completed_count': 3,
     });
 
     expect(profile.skills, ['Vá xe', 'Kích bình']);
     expect(profile.serviceRadiusKm, 10);
     expect(profile.completedCount, 3);
+    expect(profile.rejectionReason, 'Ảnh giấy tờ bị mờ');
   });
 
   test('Review.fromMap giữ rating và comment', () {

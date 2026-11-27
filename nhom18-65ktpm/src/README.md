@@ -119,12 +119,12 @@ Toàn bộ phân công dưới đây được xây dựng trực tiếp từ tà
 
 #### 1.3.4. Nguyễn Khắc Minh Hiếu — Phân hệ Chủ tiệm & Quản trị (`feat/hieu-owner-admin`)
 
-- **Thư mục phụ trách:** `lib/core/shells/owner_shell.dart`, `lib/core/shells/admin_shell.dart`, `lib/features/owner/`, `lib/features/admin/`, bổ sung CRUD vào `lib/repositories/shop_repository.dart`.
+- **Thư mục phụ trách:** `lib/core/shells/owner_shell.dart`, `lib/core/shells/admin_shell.dart`, `lib/features/owner/`, `lib/features/admin/`.
 - **Đầu việc chi tiết theo đặc tả Mục 4.9, 4.10, 4.11 (Owner), 4.14, 4.15 (`NFR-03`, `NFR-04`):**
   1. **UC-09 – Đăng ký & Quản lý tiệm (`FEAT-10.1`):**
-     - Bổ sung các phương thức CRUD cho Chủ tiệm vào `ShopRepository` (lấy tiệm của `owner_id`, tạo mới, cập nhật thông tin, bật/tắt `is_open`).
-     - Biểu mẫu tạo/sửa hồ sơ tiệm: tên tiệm (`3–150` ký tự), loại hình (`'repair_shop'` / `'gas_station'`), SĐT hotline (10 chữ số bắt đầu bằng `0`), giờ mở cửa & giờ đóng cửa (`open_time`, `close_time` qua Time Picker, khác nhau), tải ảnh mặt tiền (JPG/PNG ≤ 5 MB) lên bucket public **`shop-images/<user_id>/<file>`**, tọa độ & địa chỉ từ UC-10.
-     - Hồ sơ mới lưu `status = 'pending'` chờ Admin duyệt (UC-14). *Ngoại lệ bắt buộc:* Thiếu trường bắt buộc → đánh dấu đỏ + báo lỗi; tải ảnh thất bại → báo lỗi và hủy tiến trình lưu form.
+     - Triển khai CRUD cho Chủ tiệm tại `lib/features/owner/data/owner_shop_repository.dart` (tách khỏi `ShopRepository` chỉ đọc của Rider để tránh conflict merge; gồm lấy tiệm của `owner_id`, tạo mới, cập nhật thông tin, bật/tắt `is_open`, tải ảnh lên `shop-images`).
+     - Biểu mẫu tạo/sửa hồ sơ tiệm: tên tiệm (`3–150` ký tự), loại hình (`'repair_shop'` / `'gas_station'`), SĐT hotline (10 chữ số bắt đầu bằng `0`), giờ mở cửa & giờ đóng cửa (`open_time`, `close_time` qua Time Picker, khác nhau), tải ảnh mặt tiền (JPG/PNG ≤ 5 MB) bằng `image_picker` lên bucket public **`shop-images/<user_id>/<file>`**, tọa độ & địa chỉ từ UC-10.
+     - Hồ sơ mới lưu `status = 'pending'` chờ Admin duyệt (UC-14). Trigger `protect_shop_columns()` trên DB tự động chuyển `status` về `'pending'` và đặt `is_open = false` khi sửa tên/loại/vị trí của tiệm `approved` (A1) hoặc gửi lại hồ sơ `rejected` (A2, xóa `rejection_reason`). *Ngoại lệ bắt buộc:* Thiếu trường bắt buộc → đánh dấu đỏ + báo lỗi; tải ảnh thất bại → báo lỗi và hủy tiến trình lưu form.
   2. **UC-10 – Ghim vị trí tiệm trên bản đồ (`FEAT-10.2`):**
      - Mở bản đồ Google Maps tương tác từ form UC-09 (tâm mặc định là GPS hiện tại hoặc tọa độ đã lưu trước đó của tiệm).
      - Cho phép kéo bản đồ / kéo thả Marker, tự gọi Google Reverse Geocoding API hiển thị chuỗi địa chỉ xem trước (cho phép sửa tay) và nút *"Xác nhận vị trí này"* trả `(latitude, longitude, address)` về form UC-09 (`shops.location` PostGIS được DB tự sinh từ `latitude`/`longitude`).
@@ -361,7 +361,7 @@ Quy ước trong mỗi module: tổ chức thành `screens/`, `widgets/` và `da
 | Repository | Người phụ trách | Ghi chú triển khai |
 | --- | --- | --- |
 | `AuthRepository` | Thuận | Đã hoạt động ổn định, dùng trực tiếp |
-| `ShopRepository` | Thuận (đọc) + Hiếu (CRUD chủ tiệm) | `nearby()` gọi RPC `get_nearby_shops`; Quân dùng `nearby`/`byId` cho UC-02 → UC-04 |
+| `ShopRepository` | Thuận (đọc) | `nearby()` gọi RPC `get_nearby_shops`; Quân dùng `nearby`/`byId` cho UC-02 → UC-04. Phần CRUD chủ tiệm đặt tại `features/owner/data/owner_shop_repository.dart` (Hiếu) |
 | `ReviewRepository` | Tùng | UC-08 (`upsert` — mỗi rider 1 review/tiệm) và `listByShop` để Quân hiển thị trong UC-04 |
 | `SosRepository` | Tùng | UC-07 (`create`/`cancel`) & UC-12 (`watchPending`/`accept`/`complete`/`contact`). Nhận ca **bắt buộc** qua RPC `accept_sos` |
 | `VolunteerRepository` | Tùng | UC-13 & UC-11 phần TNV. `updateLocation` ghi EWKT: `SRID=4326;POINT(lng lat)` |
