@@ -63,7 +63,7 @@ Kiểm tra: đăng nhập `volunteer1@test.local` trên máy thật, bật *Sẵ
 dùng máy khác đăng nhập `rider1@test.local` gửi SOS gần đó → máy TNV hiện thông báo.
 Xem log: **Dashboard → Edge Functions → notify-sos → Logs** (kết quả dạng `{"sent":1,"failed":0,"cleared":0}`).
 
-Ai được báo (RPC `get_sos_recipients`, trùng logic hộp thư `get_my_pending_sos`):
+Ai được báo (RPC `get_sos_recipients` dựa trên `sos_helpers`, trùng logic hộp thư `get_my_pending_sos`; app rider dùng `count_sos_helpers` để biết quanh mình có ai không):
 TNV đã duyệt + đang sẵn sàng + ca nằm trong bán kính hỗ trợ; tiệm đã duyệt + đang mở cửa + trong 5 km
 (cây xăng chỉ nhận ca "Hết xăng"); không gửi cho chính rider và tài khoản bị khóa.
 
