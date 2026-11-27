@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../repositories/auth_repository.dart';
 import '../data/supabase_sos_repository.dart';
@@ -297,6 +298,8 @@ class _SosAlertDialogState extends State<_SosAlertDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _SosMap(latitude: sos.latitude, longitude: sos.longitude),
+          const SizedBox(height: 12),
           Text('Sự cố: ${sos.issueType}'),
           Text('Cách bạn: ${formatDistance(widget.item.distanceM)}'),
           Text('SĐT: ${sos.contactPhone}'),
@@ -313,6 +316,34 @@ class _SosAlertDialogState extends State<_SosAlertDialog> {
           child: const Text('Tiếp nhận'),
         ),
       ],
+    );
+  }
+}
+
+/// Vị trí sự cố trong Pop-up (lite mode: ảnh tĩnh, nhẹ, không cần thao tác).
+class _SosMap extends StatelessWidget {
+  const _SosMap({required this.latitude, required this.longitude});
+
+  final double latitude;
+  final double longitude;
+
+  @override
+  Widget build(BuildContext context) {
+    final point = LatLng(latitude, longitude);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        height: 160,
+        width: double.maxFinite,
+        child: GoogleMap(
+          liteModeEnabled: true,
+          initialCameraPosition: CameraPosition(target: point, zoom: 15),
+          markers: {Marker(markerId: const MarkerId('sos'), position: point)},
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
+          myLocationButtonEnabled: false,
+        ),
+      ),
     );
   }
 }
