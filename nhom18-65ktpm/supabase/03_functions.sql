@@ -87,6 +87,10 @@ create trigger trg_protect_user_columns
   before update on public.users
   for each row execute function public.protect_user_columns();
 
+-- Đảm bảo cột rejection_reason tồn tại khi chạy lại file này trên CSDL đã tạo trước đó.
+alter table public.shops add column if not exists rejection_reason text;
+alter table public.volunteer_profiles add column if not exists rejection_reason text;
+
 create or replace function public.protect_shop_columns()
 returns trigger
 language plpgsql
@@ -98,14 +102,48 @@ begin
     return new;
   end if;
   if public.is_admin() then
+    if new.status = 'approved' then
+      new.rejection_reason := null;
+    end if;
+    if new.status <> 'approved' then
+      new.is_open := false;
+    end if;
     return new;
   end if;
 
+  if old.status = 'banned' then
+    raise exception 'Tiệm đã bị khóa, không thể chỉnh sửa';
+  end if;
+
   new.owner_id := old.owner_id;
-  new.status := old.status;
   new.rating := old.rating;
   new.review_count := old.review_count;
   new.created_at := old.created_at;
+
+  if old.status = 'rejected' then
+    -- UC-09 A2: chủ tiệm sửa hồ sơ bị từ chối thì gửi lại về chờ duyệt.
+    new.status := 'pending';
+    new.is_open := false;
+    new.rejection_reason := null;
+  elsif old.status = 'approved' and (
+    new.name is distinct from old.name
+    or new.category is distinct from old.category
+    or new.latitude is distinct from old.latitude
+    or new.longitude is distinct from old.longitude
+  ) then
+    -- UC-09 A1: sửa tên, loại hình hoặc vị trí của tiệm đã duyệt cần duyệt lại.
+    new.status := 'pending';
+    new.is_open := false;
+    new.rejection_reason := null;
+  else
+    new.status := old.status;
+    new.rejection_reason := old.rejection_reason;
+    -- UC-11 E3: chỉ tiệm đã duyệt mới được bật mở cửa.
+    if new.status <> 'approved' then
+      new.is_open := false;
+    end if;
+  end if;
+
   return new;
 end;
 $$;
@@ -126,13 +164,45 @@ begin
     return new;
   end if;
   if public.is_admin() then
+    if new.status = 'approved' then
+      new.rejection_reason := null;
+    end if;
+    if new.status <> 'approved' then
+      new.is_available := false;
+    end if;
     return new;
   end if;
 
+  if old.status = 'banned' then
+    raise exception 'Hồ sơ tình nguyện viên đã bị khóa, không thể chỉnh sửa';
+  end if;
+
   new.user_id := old.user_id;
-  new.status := old.status;
   new.completed_count := old.completed_count;
   new.created_at := old.created_at;
+
+  if old.status = 'rejected' then
+    -- UC-13 A2: TNV sửa hồ sơ bị từ chối thì gửi lại về chờ duyệt.
+    new.status := 'pending';
+    new.is_available := false;
+    new.rejection_reason := null;
+  elsif old.status = 'approved' and (
+    new.phone is distinct from old.phone
+    or new.id_card_url is distinct from old.id_card_url
+  ) then
+    -- UC-13 A1: sửa SĐT hoặc ảnh giấy tờ của hồ sơ đã duyệt cần duyệt lại.
+    new.status := 'pending';
+    new.is_available := false;
+    new.rejection_reason := null;
+  else
+    new.status := old.status;
+    new.rejection_reason := old.rejection_reason;
+    -- UC-11 E3: chỉ hồ sơ đã duyệt mới được bật sẵn sàng hỗ trợ.
+    if new.status <> 'approved' then
+      new.is_available := false;
+    end if;
+  end if;
+
   return new;
 end;
 $$;

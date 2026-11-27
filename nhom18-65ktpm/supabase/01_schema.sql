@@ -41,6 +41,7 @@ create table if not exists public.shops (
   review_count integer not null default 0,
   status varchar(20) not null default 'pending'
     check (status in ('pending', 'approved', 'rejected', 'banned')),
+  rejection_reason text,
   created_at timestamptz not null default now()
 );
 
@@ -58,6 +59,7 @@ create table if not exists public.volunteer_profiles (
   is_available boolean not null default false,
   status varchar(20) not null default 'pending'
     check (status in ('pending', 'approved', 'rejected', 'banned')),
+  rejection_reason text,
   completed_count integer not null default 0,
   created_at timestamptz not null default now()
 );
@@ -93,6 +95,10 @@ create table if not exists public.reviews (
   created_at timestamptz not null default now(),
   constraint reviews_one_per_rider unique (shop_id, rider_id)
 );
+
+-- Bổ sung cột lý do từ chối cho CSDL đã khởi tạo trước đó (UC-09 A2, UC-13 A2, UC-14 A1).
+alter table public.shops add column if not exists rejection_reason text;
+alter table public.volunteer_profiles add column if not exists rejection_reason text;
 
 -- Index phục vụ truy vấn bán kính (RPC) và lọc trạng thái.
 create index if not exists shops_location_gix on public.shops using gist (location);

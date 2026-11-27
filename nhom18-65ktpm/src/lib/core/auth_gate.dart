@@ -31,7 +31,11 @@ class _AuthGateState extends State<AuthGate> {
     super.initState();
     _profile = _repo.fetchProfile();
     _subscription = supabase.auth.onAuthStateChange.listen((_) {
-      if (mounted) setState(() => _profile = _repo.fetchProfile());
+      if (mounted) {
+        setState(() {
+          _profile = _repo.fetchProfile();
+        });
+      }
     });
   }
 
