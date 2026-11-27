@@ -85,13 +85,23 @@ class AdminManagementRepository {
     }
   }
 
-  Future<void> changeShopStatus(Shop shop, String nextStatus) async {
+  Future<void> changeShopStatus(
+    Shop shop,
+    String nextStatus, {
+    String? reason,
+  }) async {
     await _requireAdmin();
     const valid = {'pending', 'approved', 'rejected', 'banned'};
     if (!valid.contains(nextStatus)) {
       throw const AppException('Trạng thái tiệm không hợp lệ.');
     }
-    final changes = <String, dynamic>{'status': nextStatus};
+    if (nextStatus == 'rejected' && (reason?.trim().isEmpty ?? true)) {
+      throw const AppException('Vui lòng nhập lý do từ chối hồ sơ.');
+    }
+    final changes = <String, dynamic>{
+      'status': nextStatus,
+      'rejection_reason': nextStatus == 'rejected' ? reason!.trim() : null,
+    };
     if (nextStatus != 'approved') {
       changes['is_open'] = false;
     }
@@ -108,14 +118,21 @@ class AdminManagementRepository {
 
   Future<void> changeVolunteerStatus(
     VolunteerProfile volunteer,
-    String nextStatus,
-  ) async {
+    String nextStatus, {
+    String? reason,
+  }) async {
     await _requireAdmin();
     const valid = {'pending', 'approved', 'rejected', 'banned'};
     if (!valid.contains(nextStatus)) {
       throw const AppException('Trạng thái tình nguyện viên không hợp lệ.');
     }
-    final changes = <String, dynamic>{'status': nextStatus};
+    if (nextStatus == 'rejected' && (reason?.trim().isEmpty ?? true)) {
+      throw const AppException('Vui lòng nhập lý do từ chối hồ sơ.');
+    }
+    final changes = <String, dynamic>{
+      'status': nextStatus,
+      'rejection_reason': nextStatus == 'rejected' ? reason!.trim() : null,
+    };
     if (nextStatus != 'approved') {
       changes['is_available'] = false;
     }

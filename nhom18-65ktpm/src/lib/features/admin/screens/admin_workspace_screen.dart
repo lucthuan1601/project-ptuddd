@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'admin_management_screen.dart';
+import '../../../repositories/auth_repository.dart';
 import 'admin_statistics_screen.dart';
 
 class AdminWorkspaceScreen extends StatelessWidget {
@@ -13,6 +14,13 @@ class AdminWorkspaceScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Quản trị viên'),
+          actions: [
+            IconButton(
+              tooltip: 'Đăng xuất',
+              onPressed: () => AuthRepository().signOut(),
+              icon: const Icon(Icons.logout),
+            ),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(icon: Icon(Icons.admin_panel_settings), text: 'Quản lý'),

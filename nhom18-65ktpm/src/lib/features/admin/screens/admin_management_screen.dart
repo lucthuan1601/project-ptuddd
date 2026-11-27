@@ -61,6 +61,65 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
         false;
   }
 
+  Future<String?> _reasonDialog(String title) async {
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 500,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Lý do từ chối *',
+            hintText: 'Nêu rõ thông tin cần bổ sung',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Xác nhận'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return reason;
+  }
+
+  Future<void> _rejectShop(Shop shop) async {
+    final reason = await _reasonDialog('Từ chối hồ sơ tiệm');
+    if (reason == null || !mounted) return;
+    await _execute(
+      'Từ chối tiệm?',
+      shop.name,
+      () => _repository.changeShopStatus(shop, 'rejected', reason: reason),
+    );
+  }
+
+  Future<void> _rejectVolunteer(VolunteerProfile volunteer) async {
+    final reason = await _reasonDialog('Từ chối hồ sơ tình nguyện viên');
+    if (reason == null || !mounted) return;
+    await _execute(
+      'Từ chối tình nguyện viên?',
+      volunteer.phone,
+      () => _repository.changeVolunteerStatus(
+        volunteer,
+        'rejected',
+        reason: reason,
+      ),
+    );
+  }
+
   Future<void> _execute(
     String title,
     String question,
@@ -77,8 +136,8 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       }
       _message('Đã cập nhật thành công.');
       await _reload();
-    } catch (error) {
-      _message('Không thể cập nhật: $error');
+    } catch (_) {
+      _message('Không thể cập nhật. Kiểm tra mạng và quyền quản trị.');
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -116,8 +175,8 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
           ],
         ),
       );
-    } catch (error) {
-      _message('Không xem được giấy tờ: $error');
+    } catch (_) {
+      _message('Không xem được giấy tờ. Kiểm tra quyền Storage.');
     }
   }
 
@@ -190,6 +249,16 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
             Text('SĐT: ${shop.phone}'),
             Text('Tọa độ: ${shop.latitude}, ${shop.longitude}'),
             Text('Trạng thái: ${_stateLabel(status)}'),
+            if (shop.rejectionReason?.trim().isNotEmpty ?? false)
+              Text('Lý do từ chối: ${shop.rejectionReason}'),
+            if (shop.imageUrl?.trim().isNotEmpty ?? false)
+              Image.network(
+                shop.imageUrl!,
+                height: 150,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    const Text('Không tải được ảnh tiệm.'),
+              ),
             Wrap(
               spacing: 8,
               runSpacing: 6,
@@ -208,14 +277,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                   ),
                 if (status == 'pending')
                   OutlinedButton(
-                    onPressed: _busy
-                        ? null
-                        : () => _execute(
-                            'Từ chối tiệm?',
-                            'Hệ thống hiện chưa có trường lưu lý do từ chối. Chỉ trạng thái rejected được lưu. Tiếp tục?',
-                            () =>
-                                _repository.changeShopStatus(shop, 'rejected'),
-                          ),
+                    onPressed: _busy ? null : () => _rejectShop(shop),
                     child: const Text('Từ chối'),
                   ),
                 if (status == 'approved' || status == 'rejected')
@@ -264,6 +326,8 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
             Text('Kỹ năng: ${volunteer.skills.join(', ')}'),
             Text('Bán kính: ${volunteer.serviceRadiusKm} km'),
             Text('Trạng thái: ${_stateLabel(status)}'),
+            if (volunteer.rejectionReason?.trim().isNotEmpty ?? false)
+              Text('Lý do từ chối: ${volunteer.rejectionReason}'),
             Wrap(
               spacing: 8,
               runSpacing: 6,
@@ -288,16 +352,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                   ),
                 if (status == 'pending')
                   OutlinedButton(
-                    onPressed: _busy
-                        ? null
-                        : () => _execute(
-                            'Từ chối hồ sơ?',
-                            'Schema chưa có trường lưu lý do từ chối. Chỉ trạng thái rejected được lưu. Tiếp tục?',
-                            () => _repository.changeVolunteerStatus(
-                              volunteer,
-                              'rejected',
-                            ),
-                          ),
+                    onPressed: _busy ? null : () => _rejectVolunteer(volunteer),
                     child: const Text('Từ chối'),
                   ),
                 if (status == 'approved' || status == 'rejected')
@@ -388,8 +443,8 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'Không tải được dữ liệu: ${snapshot.error}',
+                      child: const Text(
+                        'Không tải được dữ liệu. Kiểm tra mạng hoặc quyền truy cập.',
                         textAlign: TextAlign.center,
                       ),
                     ),
