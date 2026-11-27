@@ -32,9 +32,11 @@ alter function public.protect_shop_columns() security invoker;
 -- ============================================================
 -- 3. Quy tắc hồ sơ tình nguyện viên (UC-11, UC-13)
 -- Thay hàm cùng tên trong 03_functions.sql (trigger cũ tự dùng bản mới),
--- chạy với quyền người gọi giống mục 2.
+-- giữ các quy tắc rejection_reason / banned của 03, chạy với quyền người gọi giống mục 2.
+-- - Hồ sơ bị khóa thì không được tự sửa.
 -- - Đổi SĐT / giấy tờ khi đã duyệt -> chờ duyệt lại.
--- - Hồ sơ bị từ chối mà sửa nội dung -> gửi duyệt lại (chỉ cập nhật vị trí thì không).
+-- - Hồ sơ bị từ chối mà sửa nội dung -> gửi duyệt lại (chỉ cập nhật vị trí / công tắc thì không).
+-- - Gửi duyệt lại thì xóa lý do từ chối cũ; Admin duyệt thì cũng xóa.
 -- - Không tắt "sẵn sàng" khi đang có ca SOS chưa hoàn thành.
 -- - Hồ sơ chưa duyệt / bị khóa thì không được ở trạng thái sẵn sàng.
 -- ============================================================
@@ -44,10 +46,21 @@ language plpgsql
 security invoker
 set search_path = public, extensions
 as $$
+declare
+  v_client boolean := current_user::text in ('authenticated', 'anon');
 begin
-  if current_user::text in ('authenticated', 'anon') and not public.is_admin() then
+  if v_client and public.is_admin() then
+    if new.status = 'approved' then
+      new.rejection_reason := null;
+    end if;
+  elsif v_client then
+    if old.status = 'banned' then
+      raise exception 'Hồ sơ tình nguyện viên đã bị khóa, không thể chỉnh sửa';
+    end if;
+
     new.user_id := old.user_id;
     new.status := old.status;
+    new.rejection_reason := old.rejection_reason;
     new.completed_count := old.completed_count;
     new.created_at := old.created_at;
 
@@ -55,25 +68,29 @@ begin
        and (new.phone, new.skills, new.tools, new.id_card_url, new.service_radius_km)
            is distinct from
            (old.phone, old.skills, old.tools, old.id_card_url, old.service_radius_km) then
+      -- UC-13 A2: sửa hồ sơ bị từ chối thì gửi lại về chờ duyệt.
       new.status := 'pending';
+      new.rejection_reason := null;
     elsif old.status = 'approved'
        and (new.phone is distinct from old.phone
             or new.id_card_url is distinct from old.id_card_url) then
+      -- UC-13 A1: sửa SĐT hoặc giấy tờ của hồ sơ đã duyệt cần duyệt lại.
       new.status := 'pending';
-    end if;
-
-    if old.is_available and not new.is_available and exists (
-      select 1
-        from public.sos_requests
-       where accepted_volunteer_id = old.id
-         and status = 'accepted'
-    ) then
-      raise exception 'Vui lòng hoàn thành ca cứu hộ đang xử lý trước khi tạm nghỉ';
     end if;
   end if;
 
   if new.status <> 'approved' then
     new.is_available := false;
+  end if;
+
+  if v_client and not public.is_admin()
+     and old.is_available and not new.is_available and exists (
+    select 1
+      from public.sos_requests
+     where accepted_volunteer_id = old.id
+       and status = 'accepted'
+  ) then
+    raise exception 'Vui lòng hoàn thành ca cứu hộ đang xử lý trước khi tạm nghỉ';
   end if;
 
   return new;
