@@ -16,6 +16,13 @@ Duration sosTimeLeft(DateTime? createdAt, {DateTime? now}) {
   return left.isNegative ? Duration.zero : left;
 }
 
+/// UC-07 E1/E2: số khẩn cấp gợi ý khi không có người hỗ trợ.
+const sosEmergencyHotlines = [
+  (name: 'Cứu nạn, cứu hộ', phone: '112'),
+  (name: 'Công an', phone: '113'),
+  (name: 'Cấp cứu', phone: '115'),
+];
+
 String? validateSosNote(String? value) {
   if ((value?.trim().length ?? 0) > sosNoteMaxLength) {
     return 'Ghi chú tối đa $sosNoteMaxLength ký tự';
