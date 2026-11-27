@@ -1,3 +1,4 @@
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -20,15 +21,18 @@ class LocationResult {
   bool get isSuccess => position != null && !isGpsDisabled && !isPermissionDenied;
 }
 
-/// Dịch vụ định vị GPS thiết bị (UC-02).
+/// Dịch vụ định vị GPS thiết bị và giải mã địa chỉ Reverse Geocoding (UC-02).
 class LocationService {
   LocationService._();
 
   /// Vị trí mặc định tại trung tâm Hà Nội (Hồ Gươm) khi không có quyền GPS
   static const LatLng defaultHanoi = LatLng(21.028511, 105.854167);
 
+  static final _geocoding = Geocoding();
+
   /// Lấy vị trí GPS hiện tại kèm kiểm tra quyền và dịch vụ định vị
   static Future<LocationResult> getCurrentLocation() async {
+    // 1. Kiểm tra GPS của thiết bị đã bật chưa
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       return const LocationResult(
@@ -37,6 +41,7 @@ class LocationService {
       );
     }
 
+    // 2. Kiểm tra quyền truy cập vị trí của ứng dụng
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -57,6 +62,7 @@ class LocationService {
       );
     }
 
+    // 3. Lấy tọa độ GPS thực tế
     try {
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -66,13 +72,21 @@ class LocationService {
       );
 
       final latLng = LatLng(pos.latitude, pos.longitude);
-      return LocationResult(position: latLng);
+      final address = await getAddressFromCoordinates(pos.latitude, pos.longitude);
+
+      return LocationResult(
+        position: latLng,
+        address: address,
+      );
     } catch (_) {
+      // 4. Nếu GPS yếu hoặc timeout, thử lấy vị trí gần nhất đã lưu
       final lastPos = await Geolocator.getLastKnownPosition();
       if (lastPos != null) {
         final latLng = LatLng(lastPos.latitude, lastPos.longitude);
+        final address = await getAddressFromCoordinates(lastPos.latitude, lastPos.longitude);
         return LocationResult(
           position: latLng,
+          address: address,
           errorMessage: 'Tín hiệu GPS yếu, đang dùng vị trí gần nhất.',
         );
       }
@@ -82,5 +96,36 @@ class LocationService {
         errorMessage: 'Không thể định vị GPS, dùng vị trí mặc định.',
       );
     }
+  }
+
+  /// Dịch tọa độ thành chuỗi tên đường/phường/quận (Reverse Geocoding)
+  static Future<String> getAddressFromCoordinates(
+      double latitude, double longitude) async {
+    try {
+      final placemarks = await _geocoding.placemarkFromCoordinates(latitude, longitude);
+      if (placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        final segments = <String>[];
+
+        if (p.street != null && p.street!.trim().isNotEmpty) {
+          segments.add(p.street!.trim());
+        }
+        if (p.subLocality != null && p.subLocality!.trim().isNotEmpty && p.subLocality != p.street) {
+          segments.add(p.subLocality!.trim());
+        }
+        if (p.subAdministrativeArea != null && p.subAdministrativeArea!.trim().isNotEmpty) {
+          segments.add(p.subAdministrativeArea!.trim());
+        }
+        if (p.administrativeArea != null && p.administrativeArea!.trim().isNotEmpty) {
+          segments.add(p.administrativeArea!.trim());
+        }
+
+        if (segments.isNotEmpty) {
+          return segments.join(', ');
+        }
+      }
+    } catch (_) {}
+
+    return 'Tọa độ: ${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}';
   }
 }
