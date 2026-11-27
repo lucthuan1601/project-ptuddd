@@ -26,6 +26,7 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
   late Stream<SosRequest?> _stream = _repo.watchById(widget.sosId);
 
   Future<SosContact>? _contact;
+  Future<int>? _helpers;
   Timer? _timeout;
   bool _cancelling = false;
   bool _timedOut = false;
@@ -139,7 +140,12 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
             switch (sos.status) {
               case 'pending':
                 _scheduleTimeout(sos);
-                return _Waiting(cancelling: _cancelling, onCancel: _cancel);
+                _helpers ??= _repo.countHelpers(sos.id);
+                return _Waiting(
+                  cancelling: _cancelling,
+                  onCancel: _cancel,
+                  helpers: _helpers!,
+                );
               case 'accepted':
                 _timeout?.cancel();
                 _contact ??= _repo.contact(sos.id);
@@ -181,10 +187,15 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
 }
 
 class _Waiting extends StatefulWidget {
-  const _Waiting({required this.cancelling, required this.onCancel});
+  const _Waiting({
+    required this.cancelling,
+    required this.onCancel,
+    required this.helpers,
+  });
 
   final bool cancelling;
   final VoidCallback onCancel;
+  final Future<int> helpers;
 
   @override
   State<_Waiting> createState() => _WaitingState();
@@ -254,10 +265,59 @@ class _WaitingState extends State<_Waiting>
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),
+            // UC-07 E1: không có tiệm / TNV nào quanh đó thì gợi ý số khẩn cấp ngay.
+            FutureBuilder<int>(
+              future: widget.helpers,
+              builder: (context, snapshot) {
+                if (snapshot.data != 0) return const SizedBox.shrink();
+                return const Padding(
+                  padding: EdgeInsets.only(top: 16),
+                  child: _HotlineCard(
+                    message:
+                        'Hiện chưa có tiệm hay tình nguyện viên nào hoạt động quanh bạn. '
+                        'Bạn có thể gọi các số khẩn cấp dưới đây.',
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 24),
             OutlinedButton(
               onPressed: widget.cancelling ? null : widget.onCancel,
               child: const Text('Hủy yêu cầu'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HotlineCard extends StatelessWidget {
+  const _HotlineCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final hotline in sosEmergencyHotlines)
+                  ActionChip(
+                    avatar: const Icon(Icons.call, size: 18),
+                    label: Text('${hotline.name} ${hotline.phone}'),
+                    onPressed: () => launchPhoneCall(context, hotline.phone),
+                  ),
+              ],
             ),
           ],
         ),
