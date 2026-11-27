@@ -294,9 +294,9 @@ $$;
 revoke all on function public.set_fcm_token(text) from public, anon;
 grant execute on function public.set_fcm_token(text) to authenticated;
 
--- Edge Function notify-sos gọi bằng service_role khi có ca mới.
-create or replace function public.get_sos_recipients(p_sos_id uuid)
-returns table (user_id uuid, fcm_token text)
+-- Người được báo cho một ca SOS (dùng chung cho FCM và UC-07 E1).
+create or replace function public.sos_helpers(p_sos_id uuid)
+returns table (user_id uuid)
 language sql
 stable
 security definer
@@ -308,34 +308,45 @@ as $$
       from public.sos_requests r
      where r.id = p_sos_id
        and r.status = 'pending'
-  ),
-  recipients as (
-    select u.id as user_id, u.fcm_token
-      from sos
-      join public.volunteer_profiles vp
-        on vp.status = 'approved'
-       and vp.is_available
-       and vp.location is not null
-       and st_dwithin(vp.location, sos.point, vp.service_radius_km * 1000)
-      join public.users u on u.id = vp.user_id
-     where u.id <> sos.rider_id
-       and u.status = 'active'
-    union all
-    select u.id, u.fcm_token
-      from sos
-      join public.shops s
-        on s.status = 'approved'
-       and s.is_open
-       and (s.category = 'repair_shop' or sos.issue_type = 'Hết xăng')
-       and st_dwithin(s.location, sos.point, 5000)
-      join public.users u on u.id = s.owner_id
-     where u.id <> sos.rider_id
-       and u.status = 'active'
   )
-  select distinct on (r.fcm_token) r.user_id, r.fcm_token
-    from recipients r
-   where coalesce(r.fcm_token, '') <> ''
-   order by r.fcm_token;
+  select u.id
+    from sos
+    join public.volunteer_profiles vp
+      on vp.status = 'approved'
+     and vp.is_available
+     and vp.location is not null
+     and st_dwithin(vp.location, sos.point, vp.service_radius_km * 1000)
+    join public.users u on u.id = vp.user_id
+   where u.id <> sos.rider_id
+     and u.status = 'active'
+  union
+  select u.id
+    from sos
+    join public.shops s
+      on s.status = 'approved'
+     and s.is_open
+     and (s.category = 'repair_shop' or sos.issue_type = 'Hết xăng')
+     and st_dwithin(s.location, sos.point, 5000)
+    join public.users u on u.id = s.owner_id
+   where u.id <> sos.rider_id
+     and u.status = 'active';
+$$;
+
+revoke all on function public.sos_helpers(uuid) from public, anon, authenticated;
+
+-- Edge Function notify-sos gọi bằng service_role khi có ca mới.
+create or replace function public.get_sos_recipients(p_sos_id uuid)
+returns table (user_id uuid, fcm_token text)
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  select distinct on (u.fcm_token) u.id, u.fcm_token
+    from public.sos_helpers(p_sos_id) h
+    join public.users u on u.id = h.user_id
+   where coalesce(u.fcm_token, '') <> ''
+   order by u.fcm_token;
 $$;
 
 revoke all on function public.get_sos_recipients(uuid) from public, anon, authenticated;
