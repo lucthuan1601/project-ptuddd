@@ -71,6 +71,7 @@ void main() {
     });
 
     await tester.tap(find.byTooltip('5 sao'));
+    await tester.enterText(find.byType(TextField), 'Sửa nhanh');
     await tester.tap(find.text('Gửi đánh giá'));
     await tester.pump();
 
@@ -78,6 +79,9 @@ void main() {
       find.text('Không thể kết nối mạng, vui lòng thử lại sau.'),
       findsOneWidget,
     );
+    // Giữ nội dung đã nhập và đổi nút thành "Thử lại".
+    expect(find.text('Sửa nhanh'), findsOneWidget);
+    expect(find.text('Thử lại'), findsOneWidget);
   });
 
   testWidgets('ReviewForm đếm số ký tự còn lại', (tester) async {
