@@ -1,9 +1,49 @@
 import 'dart:math' as math;
+import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-/// Hỗ trợ UC-06: Chỉ đường (Navigation) - tính toán khoảng cách và thời gian.
+/// Hỗ trợ UC-06: Chỉ đường (Navigation) trong và ngoài ứng dụng.
 class NavigationHelper {
   NavigationHelper._();
+
+  /// Mở ứng dụng Google Maps ngoài để điều hướng rẽ theo từng chặng (Turn-by-turn navigation)
+  static Future<bool> openExternalGoogleMaps({
+    required double destinationLat,
+    required double destinationLng,
+    BuildContext? context,
+  }) async {
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$destinationLat,$destinationLng&travelmode=motorcycle',
+    );
+
+    try {
+      final canLaunch = await canLaunchUrl(uri);
+      if (canLaunch) {
+        return await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (context != null && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể mở ứng dụng bản đồ Google Maps.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+        return false;
+      }
+    } catch (_) {
+      if (context != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lỗi khi mở bản đồ bên ngoài.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return false;
+    }
+  }
 
   /// Tính khoảng cách giữa 2 tọa độ (mét)
   static double calculateDistanceMeters({
