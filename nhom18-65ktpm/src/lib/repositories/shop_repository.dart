@@ -1,7 +1,8 @@
 import '../core/supabase_client.dart';
 import '../models/shop.dart';
 
-/// Đọc dữ liệu tiệm. Hiếu bổ sung phần CRUD của chủ tiệm (UC-09, UC-10).
+/// Đọc dữ liệu tiệm (Rider UC-02 → UC-04).
+/// Phần CRUD của chủ tiệm đặt riêng tại `features/owner/data/owner_shop_repository.dart`.
 class ShopRepository {
   /// UC-02/03: danh sách tiệm trong bán kính, gần nhất trước.
   Future<List<Shop>> nearby({

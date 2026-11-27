@@ -10,6 +10,7 @@ class VolunteerProfile {
     required this.isAvailable,
     required this.status,
     required this.completedCount,
+    this.rejectionReason,
     this.tools,
     this.createdAt,
   });
@@ -25,6 +26,7 @@ class VolunteerProfile {
 
   /// pending | approved | rejected | banned
   final String status;
+  final String? rejectionReason;
   final int completedCount;
   final DateTime? createdAt;
 
@@ -40,6 +42,7 @@ class VolunteerProfile {
       serviceRadiusKm: (map['service_radius_km'] as num?)?.toInt() ?? 5,
       isAvailable: map['is_available'] as bool? ?? false,
       status: map['status']?.toString() ?? 'pending',
+      rejectionReason: map['rejection_reason']?.toString(),
       completedCount: (map['completed_count'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
     );

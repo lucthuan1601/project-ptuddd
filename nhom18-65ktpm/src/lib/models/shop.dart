@@ -15,6 +15,7 @@ class Shop {
     required this.rating,
     required this.reviewCount,
     required this.status,
+    this.rejectionReason,
     this.imageUrl,
     this.createdAt,
     this.distanceM,
@@ -41,6 +42,7 @@ class Shop {
 
   /// pending | approved | rejected | banned
   final String status;
+  final String? rejectionReason;
   final DateTime? createdAt;
 
   /// Chỉ có khi lấy từ RPC `get_nearby_shops`.
@@ -63,6 +65,7 @@ class Shop {
       rating: (map['rating'] as num?)?.toDouble() ?? 0,
       reviewCount: (map['review_count'] as num?)?.toInt() ?? 0,
       status: map['status']?.toString() ?? 'pending',
+      rejectionReason: map['rejection_reason']?.toString(),
       createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
       distanceM: (map['distance_m'] as num?)?.toDouble(),
     );
