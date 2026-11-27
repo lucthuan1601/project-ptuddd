@@ -208,7 +208,10 @@ class _RescueTab extends StatelessWidget {
     } else if (profile.status != 'approved') {
       content = _Centered(
         icon: Icons.hourglass_top,
-        text: volunteerStatusLabel(profile.status),
+        text: volunteerStatusLabel(
+          profile.status,
+          rejectionReason: profile.rejectionReason,
+        ),
       );
     } else if (!profile.isAvailable) {
       content = const _Centered(
@@ -247,7 +250,12 @@ class _ProfileTab extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.verified_user),
           title: const Text('Trạng thái hồ sơ'),
-          subtitle: Text(volunteerStatusLabel(profile.status)),
+          subtitle: Text(
+            volunteerStatusLabel(
+              profile.status,
+              rejectionReason: profile.rejectionReason,
+            ),
+          ),
         ),
         ListTile(
           leading: const Icon(Icons.phone),
