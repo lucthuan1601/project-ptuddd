@@ -1,7 +1,7 @@
 import '../models/review.dart';
 
 /// Hợp đồng cho UC-04 (hiển thị review) và UC-08 (viết review).
-/// Quân tạo `SupabaseReviewRepository` trong module review/.
+/// Tùng triển khai `SupabaseReviewRepository` trong module review/.
 abstract class ReviewRepository {
   Future<List<Review>> listByShop(String shopId);
 

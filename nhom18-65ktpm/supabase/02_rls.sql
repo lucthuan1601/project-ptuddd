@@ -21,6 +21,24 @@ $$;
 
 grant execute on function public.is_admin() to authenticated;
 
+-- Chặn tài khoản đã bị khóa (status = 'banned') ghi dữ liệu mới (UC-08 E3, UC-07, UC-09, UC-13).
+create or replace function public.is_active_user()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.users
+    where id = auth.uid()
+      and status = 'active'
+  );
+$$;
+
+grant execute on function public.is_active_user() to authenticated;
+
 -- Cấp quyền mức bảng cho role authenticated (Postgres kiểm tra GRANT trước khi kiểm tra RLS).
 grant usage on schema public to authenticated;
 grant select, update, delete on public.users to authenticated;
@@ -61,13 +79,17 @@ create policy shops_select on public.shops
 drop policy if exists shops_insert on public.shops;
 create policy shops_insert on public.shops
   for insert to authenticated
-  with check (owner_id = auth.uid() and status = 'pending');
+  with check (
+    owner_id = auth.uid()
+    and status = 'pending'
+    and public.is_active_user()
+  );
 
 drop policy if exists shops_update on public.shops;
 create policy shops_update on public.shops
   for update to authenticated
-  using (owner_id = auth.uid() or public.is_admin())
-  with check (owner_id = auth.uid() or public.is_admin());
+  using ((owner_id = auth.uid() and public.is_active_user()) or public.is_admin())
+  with check ((owner_id = auth.uid() and public.is_active_user()) or public.is_admin());
 
 drop policy if exists shops_delete on public.shops;
 create policy shops_delete on public.shops
@@ -89,13 +111,14 @@ create policy volunteer_insert on public.volunteer_profiles
     and status = 'pending'
     and is_available = false
     and completed_count = 0
+    and public.is_active_user()
   );
 
 drop policy if exists volunteer_update on public.volunteer_profiles;
 create policy volunteer_update on public.volunteer_profiles
   for update to authenticated
-  using (user_id = auth.uid() or public.is_admin())
-  with check (user_id = auth.uid() or public.is_admin());
+  using ((user_id = auth.uid() and public.is_active_user()) or public.is_admin())
+  with check ((user_id = auth.uid() and public.is_active_user()) or public.is_admin());
 
 drop policy if exists volunteer_delete on public.volunteer_profiles;
 create policy volunteer_delete on public.volunteer_profiles
@@ -112,6 +135,7 @@ create policy sos_insert on public.sos_requests
     and status = 'pending'
     and accepted_shop_id is null
     and accepted_volunteer_id is null
+    and public.is_active_user()
   );
 
 drop policy if exists sos_select on public.sos_requests;
@@ -143,15 +167,35 @@ create policy reviews_select on public.reviews
 drop policy if exists reviews_insert on public.reviews;
 create policy reviews_insert on public.reviews
   for insert to authenticated
-  with check (rider_id = auth.uid());
+  with check (rider_id = auth.uid() and public.is_active_user());
 
 drop policy if exists reviews_update on public.reviews;
 create policy reviews_update on public.reviews
   for update to authenticated
-  using (rider_id = auth.uid())
-  with check (rider_id = auth.uid());
+  using (rider_id = auth.uid() and public.is_active_user())
+  with check (rider_id = auth.uid() and public.is_active_user());
 
 drop policy if exists reviews_delete on public.reviews;
 create policy reviews_delete on public.reviews
   for delete to authenticated
-  using (rider_id = auth.uid());
+  using (rider_id = auth.uid() and public.is_active_user());
+
+-- Bật Supabase Realtime cho shops (UC-03, UC-11) và sos_requests (UC-07, UC-12).
+do $$
+declare
+  v_table text;
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    foreach v_table in array array['shops', 'sos_requests'] loop
+      if not exists (
+        select 1
+          from pg_publication_tables
+         where pubname = 'supabase_realtime'
+           and schemaname = 'public'
+           and tablename = v_table
+      ) then
+        execute format('alter publication supabase_realtime add table public.%I', v_table);
+      end if;
+    end loop;
+  end if;
+end $$;

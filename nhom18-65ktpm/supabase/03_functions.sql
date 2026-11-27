@@ -57,13 +57,13 @@ on conflict (id) do nothing;
 
 -- ============================================================
 -- 2. Trigger bảo vệ cột nhạy cảm
--- Client (role authenticated/anon) không được tự đổi role/status/rating...
--- SQL Editor và hàm security definer chạy với current_user = postgres nên được bỏ qua.
+-- Chạy security invoker để current_user giữ nguyên role gọi (authenticated/anon);
+-- SQL Editor và các hàm security definer chạy với postgres nên vẫn được bỏ qua.
 -- ============================================================
 create or replace function public.protect_user_columns()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = public, extensions
 as $$
 begin
@@ -94,7 +94,7 @@ alter table public.volunteer_profiles add column if not exists rejection_reason 
 create or replace function public.protect_shop_columns()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = public, extensions
 as $$
 begin
@@ -138,6 +138,15 @@ begin
   else
     new.status := old.status;
     new.rejection_reason := old.rejection_reason;
+    -- UC-11 E2: đang có ca SOS accepted thì không được tạm đóng cửa.
+    if old.is_open and not new.is_open and exists (
+      select 1
+        from public.sos_requests
+       where accepted_shop_id = old.id
+         and status = 'accepted'
+    ) then
+      raise exception 'Vui lòng hoàn thành ca cứu hộ đang xử lý trước khi tạm đóng cửa';
+    end if;
     -- UC-11 E3: chỉ tiệm đã duyệt mới được bật mở cửa.
     if new.status <> 'approved' then
       new.is_open := false;
@@ -156,7 +165,7 @@ create trigger trg_protect_shop_columns
 create or replace function public.protect_volunteer_columns()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = public, extensions
 as $$
 begin
@@ -181,8 +190,12 @@ begin
   new.completed_count := old.completed_count;
   new.created_at := old.created_at;
 
-  if old.status = 'rejected' then
-    -- UC-13 A2: TNV sửa hồ sơ bị từ chối thì gửi lại về chờ duyệt.
+  if old.status = 'rejected' and (
+    new.phone, new.skills, new.tools, new.id_card_url, new.service_radius_km
+  ) is distinct from (
+    old.phone, old.skills, old.tools, old.id_card_url, old.service_radius_km
+  ) then
+    -- UC-13 A2: TNV sửa nội dung hồ sơ bị từ chối thì gửi lại về chờ duyệt.
     new.status := 'pending';
     new.is_available := false;
     new.rejection_reason := null;
@@ -197,6 +210,15 @@ begin
   else
     new.status := old.status;
     new.rejection_reason := old.rejection_reason;
+    -- UC-11 E2: đang có ca SOS accepted thì không được tắt sẵn sàng.
+    if old.is_available and not new.is_available and exists (
+      select 1
+        from public.sos_requests
+       where accepted_volunteer_id = old.id
+         and status = 'accepted'
+    ) then
+      raise exception 'Vui lòng hoàn thành ca cứu hộ đang xử lý trước khi tạm nghỉ';
+    end if;
     -- UC-11 E3: chỉ hồ sơ đã duyệt mới được bật sẵn sàng hỗ trợ.
     if new.status <> 'approved' then
       new.is_available := false;
@@ -477,10 +499,9 @@ begin
   end if;
 
   if v_sos.accepted_shop_id is not null then
-    select u.full_name, s.phone
+    select s.name, s.phone
       into v_name, v_phone
       from public.shops s
-      join public.users u on u.id = s.owner_id
      where s.id = v_sos.accepted_shop_id;
   elsif v_sos.accepted_volunteer_id is not null then
     select u.full_name, vp.phone
@@ -496,9 +517,79 @@ begin
 end;
 $$;
 
+-- UC-14 A2/A3/E4: Admin khóa/mở khóa tài khoản đồng bộ tiệm, TNV và trả ca SOS đang xử lý về pending.
+create or replace function public.admin_set_user_status(
+  p_user_id uuid,
+  p_status text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Bạn không có quyền thực hiện thao tác này';
+  end if;
+  if p_status not in ('active', 'banned') then
+    raise exception 'Trạng thái tài khoản không hợp lệ';
+  end if;
+  if p_user_id = auth.uid() or exists (
+    select 1 from public.users where id = p_user_id and role = 'admin'
+  ) then
+    raise exception 'Không được thay đổi tài khoản quản trị';
+  end if;
+
+  update public.users
+     set status = p_status,
+         fcm_token = case when p_status = 'banned' then null else fcm_token end
+   where id = p_user_id;
+  if not found then
+    raise exception 'Không tìm thấy tài khoản';
+  end if;
+
+  if p_status = 'banned' then
+    -- Trả ca SOS đang xử lý (nếu có) về pending để người khác tiếp nhận.
+    update public.sos_requests
+       set status = 'pending',
+           accepted_shop_id = null,
+           accepted_volunteer_id = null
+     where status = 'accepted'
+       and (
+         accepted_shop_id in (select id from public.shops where owner_id = p_user_id)
+         or accepted_volunteer_id in (
+           select id from public.volunteer_profiles where user_id = p_user_id
+         )
+       );
+
+    update public.shops
+       set status = 'banned', is_open = false
+     where owner_id = p_user_id
+       and status <> 'banned';
+
+    update public.volunteer_profiles
+       set status = 'banned', is_available = false
+     where user_id = p_user_id
+       and status <> 'banned';
+  else
+    update public.shops
+       set status = 'approved'
+     where owner_id = p_user_id
+       and status = 'banned';
+
+    update public.volunteer_profiles
+       set status = 'approved'
+     where user_id = p_user_id
+       and status = 'banned';
+  end if;
+end;
+$$;
+
 -- ============================================================
 -- 6. Phân quyền gọi RPC
 -- ============================================================
+revoke all on function public.admin_set_user_status(uuid, text) from public, anon;
+grant execute on function public.admin_set_user_status(uuid, text) to authenticated;
 revoke all on function public.get_nearby_shops(double precision, double precision, integer, text, boolean) from public, anon;
 grant execute on function public.get_nearby_shops(double precision, double precision, integer, text, boolean) to authenticated;
 

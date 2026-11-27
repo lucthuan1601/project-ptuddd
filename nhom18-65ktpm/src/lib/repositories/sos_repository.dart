@@ -7,7 +7,7 @@ class SosContact {
   final String phone;
 }
 
-/// Hợp đồng dùng chung cho UC-07 (Quân: gửi/hủy) và UC-12 (Tùng: nhận/hoàn thành).
+/// Hợp đồng dùng chung cho UC-07 (gửi/hủy) và UC-12 (nhận/hoàn thành) do Tùng triển khai.
 /// Nhận ca BẮT BUỘC đi qua RPC `accept_sos` để không 2 người nhận trùng.
 abstract class SosRepository {
   Future<SosRequest> create({
