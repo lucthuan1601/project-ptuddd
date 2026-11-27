@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../models/shop.dart';
 import '../../../repositories/auth_repository.dart';
@@ -168,7 +168,11 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
   }
 
   Future<void> _save() async {
-    if (_saving || !_formKey.currentState!.validate()) return;
+    if (_saving) return;
+    if (!_formKey.currentState!.validate()) {
+      _message('Vui lòng kiểm tra lại các thông tin báo đỏ.');
+      return;
+    }
     final lat = double.tryParse(_latitude.text.trim());
     final lng = double.tryParse(_longitude.text.trim());
     final error = ShopLocationRules.validateCoordinates(lat, lng);
@@ -218,7 +222,8 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
       }
     } on AppException catch (e) {
       _message(e.message);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Save shop error: $e');
       _message(
         'Không lưu được hồ sơ tiệm. Hãy kiểm tra mạng và quyền Supabase.',
       );
@@ -291,6 +296,7 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
                       if (v != null) setState(() => _category = v);
                     },
             ),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _phone,
               keyboardType: TextInputType.phone,
@@ -300,6 +306,7 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
                   ? null
                   : 'Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0.',
             ),
+            const SizedBox(height: 6),
             TextFormField(
               controller: _address,
               maxLines: 2,
@@ -310,7 +317,7 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
                   ? null
                   : 'Vui lòng nhập địa chỉ tiệm.',
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -330,12 +337,13 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: _saving ? null : _pickLocation,
               icon: const Icon(Icons.map_outlined),
               label: const Text('Chọn vị trí trên bản đồ'),
             ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -395,9 +403,9 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
             ),
             if (_imageBytes != null)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: 10),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                   child: Image.memory(
                     _imageBytes!,
                     height: 140,
@@ -407,15 +415,19 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
               )
             else if (_imageUrl.text.trim().isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Image.network(
-                  _imageUrl.text.trim(),
-                  height: 120,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) =>
-                      const Text('Không hiển thị được ảnh hiện tại.'),
+                padding: const EdgeInsets.only(top: 10),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    _imageUrl.text.trim(),
+                    height: 120,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        const Text('Không hiển thị được ảnh hiện tại.'),
+                  ),
                 ),
               ),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _imageUrl,
               decoration: const InputDecoration(

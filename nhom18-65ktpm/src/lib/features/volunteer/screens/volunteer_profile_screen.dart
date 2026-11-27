@@ -2,12 +2,15 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../core/location_service.dart';
+import '../../../core/theme.dart';
 import '../../../core/validators.dart';
 import '../../../models/user.dart';
 import '../../../models/volunteer_profile.dart';
 import '../../../repositories/auth_repository.dart';
+import '../../owner/screens/shop_location_picker.dart';
 import '../data/supabase_volunteer_repository.dart';
 import '../volunteer_rules.dart';
 
@@ -46,6 +49,8 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
   VolunteerProfile? _old;
   final _skills = <String>{};
   int _radiusKm = volunteerDefaultRadiusKm;
+  LatLng? _pickedLocation;
+  String? _pickedAddress;
   _PickedImage? _newIdCard;
   Future<String>? _oldIdCardUrl;
 
@@ -120,6 +125,25 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
     }
   }
 
+  Future<void> _pickOperatingArea() async {
+    final picked = await Navigator.of(context).push<ShopPickedLocation>(
+      MaterialPageRoute(
+        builder: (_) => ShopLocationPicker(
+          initialPosition: _pickedLocation,
+          initialAddress: _pickedAddress,
+          title: 'Chọn khu vực hoạt động',
+          markerTitle: 'Khu vực hoạt động chính',
+          requireAddress: false,
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _pickedLocation = picked.position;
+      _pickedAddress = picked.address;
+    });
+  }
+
   Future<void> _submit() async {
     final formOk = _formKey.currentState!.validate();
     final hasIdCard = _newIdCard != null || (_old?.idCardUrl ?? '').isNotEmpty;
@@ -134,8 +158,17 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
     final old = _old;
     String? uploadedPath;
     try {
-      // Lấy GPS trước để không ghi hồ sơ dở dang khi chưa cấp quyền vị trí.
-      final position = await _location.current();
+      // Ưu tiên vị trí TNV đã ghim trên bản đồ (UC-13); nếu chưa chọn thì lấy GPS hiện tại.
+      final double lat;
+      final double lng;
+      if (_pickedLocation != null) {
+        lat = _pickedLocation!.latitude;
+        lng = _pickedLocation!.longitude;
+      } else {
+        final position = await _location.current();
+        lat = position.latitude;
+        lng = position.longitude;
+      }
 
       var idCardPath = old?.idCardUrl ?? '';
       final picked = _newIdCard;
@@ -162,10 +195,7 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
       }
       _old = saved;
       _newIdCard = null;
-      await _repo.updateLocation(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
+      await _repo.updateLocation(latitude: lat, longitude: lng);
       if (old != null && picked != null && old.idCardUrl != idCardPath) {
         await _repo.removeIdCard(old.idCardUrl);
       }
@@ -250,12 +280,17 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                 child: ListTile(
                   leading: const Icon(Icons.verified_user),
                   title: const Text('Trạng thái hồ sơ'),
-                  subtitle: Text(
-                    old.status == 'rejected' &&
-                            (old.rejectionReason?.trim().isNotEmpty ?? false)
-                        ? '${volunteerStatusLabel(old.status)}\nLý do: ${old.rejectionReason}'
-                        : volunteerStatusLabel(old.status),
-                  ),
+                  trailing: buildStatusBadge(old.status),
+                  subtitle: old.status == 'rejected' &&
+                          (old.rejectionReason?.trim().isNotEmpty ?? false)
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Lý do từ chối: ${old.rejectionReason}',
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                        )
+                      : Text(volunteerStatusLabel(old.status)),
                 ),
               ),
             const SizedBox(height: 12),
@@ -370,14 +405,80 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
               ],
             ),
             const SizedBox(height: 16),
+            Text('Khu vực hoạt động chính', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.location_on_outlined,
+                          color: theme.colorScheme.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _pickedLocation != null
+                                ? (_pickedAddress ??
+                                    '${_pickedLocation!.latitude.toStringAsFixed(5)}, ${_pickedLocation!.longitude.toStringAsFixed(5)}')
+                                : 'Mặc định dùng vị trí GPS hiện tại khi gửi hồ sơ.',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _saving || banned ? null : _pickOperatingArea,
+                          icon: const Icon(Icons.map_outlined, size: 18),
+                          label: Text(
+                            _pickedLocation == null
+                                ? 'Chọn khu vực trên bản đồ'
+                                : 'Đổi vị trí đã ghim',
+                          ),
+                        ),
+                        if (_pickedLocation != null && !_saving && !banned)
+                          TextButton(
+                            onPressed: () => setState(() {
+                              _pickedLocation = null;
+                              _pickedAddress = null;
+                            }),
+                            child: const Text('Dùng GPS hiện tại'),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
             Text(
-              'Khu vực hoạt động chính được lấy theo vị trí GPS hiện tại khi bạn gửi hồ sơ. '
               'Ảnh giấy tờ chỉ bạn và Quản trị viên xem được.',
               style: theme.textTheme.bodySmall,
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+              ),
             ],
             const SizedBox(height: 20),
             FilledButton(

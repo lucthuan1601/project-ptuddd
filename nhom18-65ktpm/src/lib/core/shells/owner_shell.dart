@@ -9,6 +9,7 @@ import '../../features/sos/widgets/sos_inbox.dart';
 import '../../models/shop.dart';
 import '../../repositories/auth_repository.dart';
 import '../push_service.dart';
+import '../theme.dart';
 
 /// Phân hệ Chủ tiệm: UC-09, UC-10, UC-11 (quản lý tiệm) & UC-12 (hộp thư SOS).
 class OwnerShell extends StatefulWidget {
@@ -42,7 +43,9 @@ class _OwnerShellState extends State<OwnerShell> {
 
   Future<void> _reload() async {
     final future = _repository.myShops();
-    setState(() => _shops = future);
+    setState(() {
+      _shops = future;
+    });
     try {
       await future;
     } catch (_) {
@@ -71,18 +74,11 @@ class _OwnerShellState extends State<OwnerShell> {
     await _reload();
   }
 
-  String _statusLabel(String status) => switch (status) {
-    'pending' => 'Chờ duyệt',
-    'approved' => 'Đã duyệt',
-    'rejected' => 'Bị từ chối',
-    'banned' => 'Đã khóa',
-    _ => status,
-  };
-
   String _clock(String value) =>
       value.length >= 5 ? value.substring(0, 5) : value;
 
   Widget _shopCard(Shop shop) {
+    final isGas = shop.category == 'gas_station';
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -92,29 +88,63 @@ class _OwnerShellState extends State<OwnerShell> {
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    shop.name,
-                    style: Theme.of(context).textTheme.titleMedium,
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: isGas
+                      ? const Color(0xFFE3F2FD)
+                      : const Color(0xFFFFF3E0),
+                  child: Icon(
+                    isGas ? Icons.local_gas_station : Icons.build,
+                    size: 18,
+                    color: isGas
+                        ? const Color(0xFF1565C0)
+                        : const Color(0xFFE65100),
                   ),
                 ),
-                Chip(label: Text(_statusLabel(shop.status))),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        shop.name,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                      Text(
+                        isGas ? 'Cây xăng' : 'Tiệm sửa xe',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                buildStatusBadge(shop.status),
               ],
             ),
-            Text(shop.category == 'gas_station' ? 'Cây xăng' : 'Tiệm sửa xe'),
+            const SizedBox(height: 10),
             Text('Địa chỉ: ${shop.address}'),
+            const SizedBox(height: 2),
             Text('Hotline: ${shop.phone}'),
-            Text('Giờ: ${_clock(shop.openTime)} – ${_clock(shop.closeTime)}'),
-            Text('Đánh giá: ${shop.rating.toStringAsFixed(1)}/5'),
+            const SizedBox(height: 2),
+            Text(
+              'Giờ: ${_clock(shop.openTime)} – ${_clock(shop.closeTime)} · '
+              'Đánh giá: ${shop.rating.toStringAsFixed(1)}/5 (${shop.reviewCount})',
+            ),
             if (shop.imageUrl != null && shop.imageUrl!.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Image.network(
-                  shop.imageUrl!,
-                  height: 140,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) =>
-                      const Text('Không hiển thị được ảnh tiệm.'),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    shop.imageUrl!,
+                    height: 150,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        const Text('Không hiển thị được ảnh tiệm.'),
+                  ),
                 ),
               ),
             if (shop.status == 'rejected' &&

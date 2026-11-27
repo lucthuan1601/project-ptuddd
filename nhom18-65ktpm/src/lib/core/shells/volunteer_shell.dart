@@ -14,6 +14,7 @@ import '../../models/volunteer_profile.dart';
 import '../../repositories/auth_repository.dart';
 import '../location_service.dart';
 import '../push_service.dart';
+import '../theme.dart';
 
 /// Phân hệ tình nguyện viên: UC-11 (sẵn sàng), UC-12 (nhận ca), UC-13 (hồ sơ).
 class VolunteerShell extends StatefulWidget {
@@ -77,7 +78,11 @@ class _VolunteerShellState extends State<VolunteerShell> {
     } catch (_) {}
   }
 
-  void _reload() => setState(() => _data = _load());
+  void _reload() {
+    setState(() {
+      _data = _load();
+    });
+  }
 
   Future<void> _openProfileForm() async {
     final saved = await Navigator.of(context).push<bool>(
@@ -246,41 +251,54 @@ class _ProfileTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        ListTile(
-          leading: const Icon(Icons.verified_user),
-          title: const Text('Trạng thái hồ sơ'),
-          subtitle: Text(
-            profile.status == 'rejected' &&
-                    (profile.rejectionReason?.trim().isNotEmpty ?? false)
-                ? '${volunteerStatusLabel(profile.status)}\nLý do: ${profile.rejectionReason}'
-                : volunteerStatusLabel(profile.status),
+        Card(
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.verified_user),
+                title: const Text('Trạng thái hồ sơ'),
+                trailing: buildStatusBadge(profile.status),
+                subtitle: Text(
+                  profile.status == 'rejected' &&
+                          (profile.rejectionReason?.trim().isNotEmpty ?? false)
+                      ? '${volunteerStatusLabel(profile.status)}\nLý do: ${profile.rejectionReason}'
+                      : volunteerStatusLabel(profile.status),
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.phone),
+                title: const Text('Số điện thoại'),
+                subtitle: Text(profile.phone),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.build),
+                title: const Text('Kỹ năng'),
+                subtitle: Text(profile.skills.join(', ')),
+              ),
+              if (tools.isNotEmpty) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.handyman),
+                  title: const Text('Dụng cụ'),
+                  subtitle: Text(tools),
+                ),
+              ],
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.radar),
+                title: const Text('Bán kính hỗ trợ'),
+                subtitle: Text('${profile.serviceRadiusKm} km'),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.emoji_events),
+                title: const Text('Ca đã hoàn thành'),
+                subtitle: Text('${profile.completedCount}'),
+              ),
+            ],
           ),
-        ),
-        ListTile(
-          leading: const Icon(Icons.phone),
-          title: const Text('Số điện thoại'),
-          subtitle: Text(profile.phone),
-        ),
-        ListTile(
-          leading: const Icon(Icons.build),
-          title: const Text('Kỹ năng'),
-          subtitle: Text(profile.skills.join(', ')),
-        ),
-        if (tools.isNotEmpty)
-          ListTile(
-            leading: const Icon(Icons.handyman),
-            title: const Text('Dụng cụ'),
-            subtitle: Text(tools),
-          ),
-        ListTile(
-          leading: const Icon(Icons.radar),
-          title: const Text('Bán kính hỗ trợ'),
-          subtitle: Text('${profile.serviceRadiusKm} km'),
-        ),
-        ListTile(
-          leading: const Icon(Icons.emoji_events),
-          title: const Text('Ca đã hoàn thành'),
-          subtitle: Text('${profile.completedCount}'),
         ),
         const SizedBox(height: 12),
         if (profile.status != 'banned')

@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 
 import '../../../models/sos_request.dart';
 import '../../../repositories/auth_repository.dart';
+import '../../map/location_service.dart' as map_loc;
+import '../../navigation/navigation_helper.dart';
 import '../data/supabase_sos_repository.dart';
 import '../screens/active_case_screen.dart';
 import '../sos_rules.dart';
@@ -259,19 +261,52 @@ class _SosCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     sos.issueType,
-                    style: theme.textTheme.titleMedium,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                Text(formatDistance(item.distanceM)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    formatDistance(item.distanceM),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
-              '${formatAgo(sos.createdAt?.toLocal())} · ${sos.contactPhone}',
+              '${formatAgo(sos.createdAt?.toLocal())} · SĐT: ${sos.contactPhone}',
               style: theme.textTheme.bodySmall,
             ),
             if (note.isNotEmpty) ...[const SizedBox(height: 8), Text(note)],
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => NavigationHelper.openExternalGoogleMaps(
+                  destinationLat: sos.latitude,
+                  destinationLng: sos.longitude,
+                  context: context,
+                ),
+                icon: const Icon(Icons.map_outlined, size: 17),
+                label: const Text('Xem vị trí sự cố'),
+              ),
+            ),
+            const SizedBox(height: 6),
             Row(
               children: [
                 Expanded(
@@ -310,6 +345,7 @@ class _SosAlertDialog extends StatefulWidget {
 class _SosAlertDialogState extends State<_SosAlertDialog> {
   Timer? _autoDismiss;
   bool _closed = false;
+  String? _address;
 
   @override
   void initState() {
@@ -319,6 +355,16 @@ class _SosAlertDialogState extends State<_SosAlertDialog> {
       sosPopupAutoDismiss,
       () => _close(_AlertDecision.dismiss),
     );
+    unawaited(_resolveAddress());
+  }
+
+  Future<void> _resolveAddress() async {
+    final sos = widget.item.request;
+    final addr = await map_loc.LocationService.getAddressFromCoordinates(
+      sos.latitude,
+      sos.longitude,
+    );
+    if (mounted) setState(() => _address = addr);
   }
 
   @override
@@ -344,6 +390,9 @@ class _SosAlertDialogState extends State<_SosAlertDialog> {
   Widget build(BuildContext context) {
     final sos = widget.item.request;
     final note = sos.note ?? '';
+    final locationLabel =
+        _address ??
+        '${sos.latitude.toStringAsFixed(5)}, ${sos.longitude.toStringAsFixed(5)}';
 
     return PopScope(
       canPop: false,
@@ -361,10 +410,34 @@ class _SosAlertDialogState extends State<_SosAlertDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Sự cố: ${sos.issueType}'),
+            Text(
+              'Sự cố: ${sos.issueType}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
             Text('Cách bạn: ${formatDistance(widget.item.distanceM)}'),
+            const SizedBox(height: 4),
+            Text('Vị trí: $locationLabel'),
+            const SizedBox(height: 4),
             Text('SĐT: ${sos.contactPhone}'),
-            if (note.isNotEmpty) Text('Ghi chú: $note'),
+            if (note.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('Ghi chú: $note'),
+            ],
+            const SizedBox(height: 8),
+            TextButton.icon(
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: () => NavigationHelper.openExternalGoogleMaps(
+                destinationLat: sos.latitude,
+                destinationLng: sos.longitude,
+                context: context,
+              ),
+              icon: const Icon(Icons.map_outlined, size: 18),
+              label: const Text('Xem vị trí trên bản đồ'),
+            ),
           ],
         ),
         actions: [

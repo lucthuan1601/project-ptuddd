@@ -1,4 +1,5 @@
 import '../../../core/supabase_client.dart';
+import '../../../core/supabase_errors.dart';
 import '../../../models/shop.dart';
 import '../../../repositories/auth_repository.dart';
 
@@ -54,50 +55,56 @@ class OwnerShopRepository {
     return user.id;
   }
 
-  Future<List<Shop>> myShops() async {
-    final rows = await supabase
-        .from('shops')
-        .select()
-        .eq('owner_id', _ownerId)
-        .order('created_at', ascending: false);
-    return rows
-        .map((row) => Shop.fromMap(Map<String, dynamic>.from(row)))
-        .toList();
+  Future<List<Shop>> myShops() {
+    return guardSupabase(() async {
+      final rows = await supabase
+          .from('shops')
+          .select()
+          .eq('owner_id', _ownerId)
+          .order('created_at', ascending: false);
+      return rows
+          .map((row) => Shop.fromMap(Map<String, dynamic>.from(row)))
+          .toList();
+    });
   }
 
-  Future<Shop> create(ShopDraft draft) async {
-    final row = await supabase
-        .from('shops')
-        .insert({
-          ...draft.toMap(),
-          'owner_id': _ownerId,
-          'status': 'pending',
-          'is_open': false,
-        })
-        .select()
-        .single();
-    return Shop.fromMap(Map<String, dynamic>.from(row));
+  Future<Shop> create(ShopDraft draft) {
+    return guardSupabase(() async {
+      final row = await supabase
+          .from('shops')
+          .insert({
+            ...draft.toMap(),
+            'owner_id': _ownerId,
+            'status': 'pending',
+            'is_open': false,
+          })
+          .select()
+          .single();
+      return Shop.fromMap(Map<String, dynamic>.from(row));
+    });
   }
 
-  Future<Shop> update({required Shop shop, required ShopDraft draft}) async {
-    if (shop.ownerId != _ownerId) {
-      throw const AppException('Bạn không có quyền sửa tiệm này.');
-    }
-    if (shop.status == 'banned') {
-      throw const AppException('Tiệm đã bị khóa. Liên hệ quản trị viên.');
-    }
-    final row = await supabase
-        .from('shops')
-        .update(draft.toMap())
-        .eq('id', shop.id)
-        .eq('owner_id', _ownerId)
-        .select()
-        .maybeSingle();
-    if (row == null) {
-      throw const AppException(
-        'Không tìm thấy tiệm hoặc không có quyền cập nhật.',
-      );
-    }
-    return Shop.fromMap(Map<String, dynamic>.from(row));
+  Future<Shop> update({required Shop shop, required ShopDraft draft}) {
+    return guardSupabase(() async {
+      if (shop.ownerId != _ownerId) {
+        throw const AppException('Bạn không có quyền sửa tiệm này.');
+      }
+      if (shop.status == 'banned') {
+        throw const AppException('Tiệm đã bị khóa. Liên hệ quản trị viên.');
+      }
+      final row = await supabase
+          .from('shops')
+          .update(draft.toMap())
+          .eq('id', shop.id)
+          .eq('owner_id', _ownerId)
+          .select()
+          .maybeSingle();
+      if (row == null) {
+        throw const AppException(
+          'Không tìm thấy tiệm hoặc không có quyền cập nhật.',
+        );
+      }
+      return Shop.fromMap(Map<String, dynamic>.from(row));
+    });
   }
 }

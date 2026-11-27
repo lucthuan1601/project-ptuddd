@@ -147,7 +147,11 @@ class _OnboardingGateState extends State<_OnboardingGate> {
           return widget.child;
         }
         return widget.buildOnboarding(() {
-          if (mounted) setState(() => _hasSetup = Future.value(true));
+          if (mounted) {
+            setState(() {
+              _hasSetup = Future.value(true);
+            });
+          }
         });
       },
     );

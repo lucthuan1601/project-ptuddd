@@ -46,7 +46,9 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
   }
 
   void _reloadContact(String sosId) {
-    setState(() => _contact = _repo.contact(sosId));
+    setState(() {
+      _contact = _repo.contact(sosId);
+    });
   }
 
   void _ensurePendingChecks(SosRequest sos) {
