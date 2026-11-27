@@ -50,4 +50,19 @@ void main() {
       expect(volunteerStatusLabel(status), isNotEmpty);
     }
   });
+
+  test('volunteerStatusLabel hiện lý do từ chối nếu có', () {
+    expect(
+      volunteerStatusLabel('rejected', rejectionReason: ' Ảnh mờ '),
+      'Bị từ chối: Ảnh mờ. Vui lòng sửa và gửi lại',
+    );
+    expect(
+      volunteerStatusLabel('rejected', rejectionReason: '  '),
+      'Bị từ chối, vui lòng sửa và gửi lại',
+    );
+    expect(
+      volunteerStatusLabel('approved', rejectionReason: 'cũ'),
+      'Đã được duyệt',
+    );
+  });
 }
