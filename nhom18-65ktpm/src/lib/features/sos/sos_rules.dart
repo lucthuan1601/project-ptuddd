@@ -6,6 +6,16 @@ const sosIssueTypes = ['Hết xăng', 'Thủng lốp', 'Hỏng động cơ', 'Kh
 
 const sosNoteMaxLength = 300;
 
+/// UC-07 E2: ca chờ quá thời gian này thì tự hủy (khớp interval trong 06_sos_volunteer.sql).
+const sosTimeout = Duration(minutes: 5);
+
+/// Thời gian còn lại trước khi ca hết hạn; không âm.
+Duration sosTimeLeft(DateTime? createdAt, {DateTime? now}) {
+  if (createdAt == null) return sosTimeout;
+  final left = sosTimeout - (now ?? DateTime.now()).difference(createdAt);
+  return left.isNegative ? Duration.zero : left;
+}
+
 String? validateSosNote(String? value) {
   if ((value?.trim().length ?? 0) > sosNoteMaxLength) {
     return 'Ghi chú tối đa $sosNoteMaxLength ký tự';
