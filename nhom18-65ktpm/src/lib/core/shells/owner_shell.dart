@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../features/owner/data/owner_shop_repository.dart';
 import '../../features/owner/screens/shop_editor_screen.dart';
+import '../../features/owner/widgets/shop_open_status_card.dart';
 import '../../models/shop.dart';
 import '../../repositories/auth_repository.dart';
 
-/// Màn hình danh sách tiệm của Owner trong UC-09.
-/// UC-11 sẽ bổ sung công tắc đóng/mở cửa và UC-12 sẽ gắn SOS của Tùng.
 class OwnerShell extends StatefulWidget {
   const OwnerShell({super.key});
 
@@ -30,7 +29,11 @@ class _OwnerShellState extends State<OwnerShell> {
     try {
       await future;
     } catch (_) {
-      // FutureBuilder sẽ hiển thị lỗi để người dùng thử lại.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không tải lại được danh sách tiệm.')),
+        );
+      }
     }
   }
 
@@ -59,6 +62,9 @@ class _OwnerShellState extends State<OwnerShell> {
     _ => status,
   };
 
+  String _clock(String value) =>
+      value.length >= 5 ? value.substring(0, 5) : value;
+
   Widget _shopCard(Shop shop) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -81,12 +87,24 @@ class _OwnerShellState extends State<OwnerShell> {
             Text(shop.category == 'gas_station' ? 'Cây xăng' : 'Tiệm sửa xe'),
             Text('Địa chỉ: ${shop.address}'),
             Text('Hotline: ${shop.phone}'),
-            Text(
-              'Giờ: ${shop.openTime.substring(0, 5)} – ${shop.closeTime.substring(0, 5)}',
-            ),
+            Text('Giờ: ${_clock(shop.openTime)} – ${_clock(shop.closeTime)}'),
             Text('Đánh giá: ${shop.rating.toStringAsFixed(1)}/5'),
             if (shop.imageUrl != null && shop.imageUrl!.isNotEmpty)
-              Text('Ảnh: ${shop.imageUrl}'),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Image.network(
+                  shop.imageUrl!,
+                  height: 140,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) =>
+                      const Text('Không hiển thị được ảnh tiệm.'),
+                ),
+              ),
+            if (shop.status == 'rejected' &&
+                (shop.rejectionReason?.trim().isNotEmpty ?? false))
+              Text('Lý do từ chối: ${shop.rejectionReason}'),
+            if (shop.status == 'approved')
+              ShopOpenStatusCard(shop: shop, onChanged: _reload),
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
@@ -141,7 +159,7 @@ class _OwnerShellState extends State<OwnerShell> {
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Text(
-                      'Không tải được danh sách: ${snapshot.error}',
+                      'Không tải được danh sách. Kiểm tra mạng và quyền truy cập.',
                       textAlign: TextAlign.center,
                     ),
                   ),

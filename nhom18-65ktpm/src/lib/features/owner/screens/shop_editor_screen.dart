@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../models/shop.dart';
+import '../../../repositories/auth_repository.dart';
 import '../data/owner_shop_repository.dart';
+import '../data/shop_image_uploader.dart';
+import '../data/shop_location_rules.dart';
+import 'shop_location_picker.dart';
 
-/// UC-09: tạo và sửa thông tin tiệm.
-/// Bước UC-10 sẽ thay nhập tọa độ thủ công bằng bản đồ tương tác.
 class ShopEditorScreen extends StatefulWidget {
   const ShopEditorScreen({super.key, this.shop});
 
@@ -17,6 +21,8 @@ class ShopEditorScreen extends StatefulWidget {
 class _ShopEditorScreenState extends State<ShopEditorScreen> {
   final _formKey = GlobalKey<FormState>();
   final _repository = OwnerShopRepository();
+  final _imageUploader = ShopImageUploader();
+  final _picker = ImagePicker();
 
   late final TextEditingController _name;
   late final TextEditingController _phone;
@@ -28,43 +34,36 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
   late TimeOfDay _openTime;
   late TimeOfDay _closeTime;
   bool _saving = false;
-
-  TimeOfDay _readTime(String? text, TimeOfDay fallback) {
-    final parts = text?.split(':') ?? [];
-    if (parts.length < 2) return fallback;
-    final hour = int.tryParse(parts[0]);
-    final minute = int.tryParse(parts[1]);
-    if (hour == null ||
-        minute == null ||
-        hour < 0 ||
-        hour > 23 ||
-        minute < 0 ||
-        minute > 59) {
-      return fallback;
-    }
-    return TimeOfDay(hour: hour, minute: minute);
-  }
+  XFile? _image;
 
   @override
   void initState() {
     super.initState();
-    final shop = widget.shop;
-    _name = TextEditingController(text: shop?.name ?? '');
-    _phone = TextEditingController(text: shop?.phone ?? '');
-    _address = TextEditingController(text: shop?.address ?? '');
-    _imageUrl = TextEditingController(text: shop?.imageUrl ?? '');
+    final s = widget.shop;
+    _name = TextEditingController(text: s?.name ?? '');
+    _phone = TextEditingController(text: s?.phone ?? '');
+    _address = TextEditingController(text: s?.address ?? '');
+    _imageUrl = TextEditingController(text: s?.imageUrl ?? '');
     _latitude = TextEditingController(
-      text: shop == null ? '' : shop.latitude.toStringAsFixed(6),
+      text: s == null ? '' : s.latitude.toStringAsFixed(6),
     );
     _longitude = TextEditingController(
-      text: shop == null ? '' : shop.longitude.toStringAsFixed(6),
+      text: s == null ? '' : s.longitude.toStringAsFixed(6),
     );
-    _category = shop?.category ?? 'repair_shop';
-    _openTime = _readTime(shop?.openTime, const TimeOfDay(hour: 7, minute: 0));
-    _closeTime = _readTime(
-      shop?.closeTime,
-      const TimeOfDay(hour: 21, minute: 0),
-    );
+    _category = s?.category ?? 'repair_shop';
+    _openTime = _parseTime(s?.openTime, const TimeOfDay(hour: 7, minute: 0));
+    _closeTime = _parseTime(s?.closeTime, const TimeOfDay(hour: 21, minute: 0));
+  }
+
+  TimeOfDay _parseTime(String? value, TimeOfDay fallback) {
+    final parts = value?.split(':') ?? [];
+    if (parts.length < 2) return fallback;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null || h < 0 || h > 23 || m < 0 || m > 59) {
+      return fallback;
+    }
+    return TimeOfDay(hour: h, minute: m);
   }
 
   @override
@@ -78,60 +77,117 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
     super.dispose();
   }
 
-  String _sqlTime(TimeOfDay time) =>
-      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
+  void _message(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
 
-  Future<void> _selectTime({required bool opening}) async {
-    final chosen = await showTimePicker(
+  String _sqlTime(TimeOfDay value) =>
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}:00';
+
+  Future<void> _selectTime(bool opening) async {
+    final value = await showTimePicker(
       context: context,
       initialTime: opening ? _openTime : _closeTime,
     );
-    if (!mounted || chosen == null) return;
+    if (value == null || !mounted) return;
     setState(() {
       if (opening) {
-        _openTime = chosen;
+        _openTime = value;
       } else {
-        _closeTime = chosen;
+        _closeTime = value;
       }
     });
   }
 
+  Future<void> _selectImage() async {
+    if (_saving) return;
+    try {
+      final file = await _picker.pickImage(source: ImageSource.gallery);
+      if (file == null || !mounted) return;
+      final extension = file.name.split('.').last.toLowerCase();
+      if (!{'jpg', 'jpeg', 'png'}.contains(extension)) {
+        throw const AppException('Chỉ chấp nhận ảnh JPG hoặc PNG.');
+      }
+      final size = await file.length();
+      if (size == 0 || size > ShopImageUploader.maxBytes) {
+        throw const AppException('Ảnh phải nhỏ hơn hoặc bằng 5 MB.');
+      }
+      if (mounted) setState(() => _image = file);
+    } on AppException catch (e) {
+      _message(e.message);
+    } catch (_) {
+      _message('Không chọn được ảnh. Hãy thử lại.');
+    }
+  }
+
+  Future<void> _pickLocation() async {
+    if (_saving) return;
+    final lat = double.tryParse(_latitude.text.trim());
+    final lng = double.tryParse(_longitude.text.trim());
+    LatLng? initial;
+    if (ShopLocationRules.validateCoordinates(lat, lng) == null) {
+      initial = LatLng(lat!, lng!);
+    }
+    final selected = await Navigator.of(context).push<ShopPickedLocation>(
+      MaterialPageRoute(
+        builder: (_) => ShopLocationPicker(
+          initialPosition: initial,
+          initialAddress: _address.text,
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _latitude.text = selected.position.latitude.toStringAsFixed(6);
+      _longitude.text = selected.position.longitude.toStringAsFixed(6);
+      _address.text = selected.address;
+    });
+    _message('Đã cập nhật vị trí tiệm.');
+  }
+
   Future<void> _save() async {
     if (_saving || !_formKey.currentState!.validate()) return;
-    if (_openTime.hour == _closeTime.hour &&
-        _openTime.minute == _closeTime.minute) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Giờ mở và giờ đóng phải khác nhau.')),
-      );
+    final lat = double.tryParse(_latitude.text.trim());
+    final lng = double.tryParse(_longitude.text.trim());
+    final error = ShopLocationRules.validateCoordinates(lat, lng);
+    if (error != null) {
+      _message(error);
       return;
     }
-
-    final draft = ShopDraft(
-      name: _name.text,
-      category: _category,
-      phone: _phone.text,
-      address: _address.text,
-      latitude: double.parse(_latitude.text.trim()),
-      longitude: double.parse(_longitude.text.trim()),
-      openTime: _sqlTime(_openTime),
-      closeTime: _sqlTime(_closeTime),
-      imageUrl: _imageUrl.text,
-    );
-
+    if (_openTime == _closeTime) {
+      _message('Giờ mở và giờ đóng phải khác nhau.');
+      return;
+    }
     setState(() => _saving = true);
     try {
+      var imageUrl = _imageUrl.text.trim();
+      if (_image != null) {
+        imageUrl = await _imageUploader.upload(_image!);
+      }
+      final draft = ShopDraft(
+        name: _name.text,
+        category: _category,
+        phone: _phone.text,
+        address: _address.text,
+        latitude: lat!,
+        longitude: lng!,
+        openTime: _sqlTime(_openTime),
+        closeTime: _sqlTime(_closeTime),
+        imageUrl: imageUrl,
+      );
       if (widget.shop == null) {
         await _repository.create(draft);
       } else {
         await _repository.update(shop: widget.shop!, draft: draft);
       }
       if (mounted) Navigator.of(context).pop(true);
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Không lưu được tiệm: $error')));
-      }
+    } on AppException catch (e) {
+      _message(e.message);
+    } catch (_) {
+      _message(
+        'Không lưu được hồ sơ tiệm. Hãy kiểm tra mạng và quyền Supabase.',
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -140,6 +196,7 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final editing = widget.shop != null;
+    final approved = widget.shop?.status == 'approved';
     return Scaffold(
       appBar: AppBar(title: Text(editing ? 'Chỉnh sửa tiệm' : 'Đăng ký tiệm')),
       body: Form(
@@ -148,25 +205,32 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            if (!editing)
+            if (!editing) const Text('Hồ sơ mới sẽ chờ Admin phê duyệt.'),
+            if (approved)
               const Padding(
-                padding: EdgeInsets.only(bottom: 14),
-                child: Text('Tiệm mới sẽ ở trạng thái chờ Admin phê duyệt.'),
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Nếu thay tên, loại hình hoặc vị trí, tiệm sẽ chờ phê duyệt lại.',
+                ),
+              ),
+            if (widget.shop?.status == 'rejected')
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Lý do từ chối: ${widget.shop?.rejectionReason ?? 'Chưa có lý do.'}',
+                ),
               ),
             TextFormField(
               controller: _name,
               maxLength: 150,
               decoration: const InputDecoration(labelText: 'Tên tiệm *'),
-              validator: (value) {
-                final n = value?.trim().length ?? 0;
-                if (n < 3 || n > 150) {
-                  return 'Tên tiệm phải từ 3 đến 150 ký tự.';
-                }
-
-                return null;
+              validator: (v) {
+                final n = v?.trim().length ?? 0;
+                return n >= 3 && n <= 150
+                    ? null
+                    : 'Tên tiệm phải từ 3 đến 150 ký tự.';
               },
             ),
-            const SizedBox(height: 8),
             DropdownButtonFormField<String>(
               initialValue: _category,
               decoration: const InputDecoration(labelText: 'Loại cơ sở *'),
@@ -179,40 +243,35 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
               ],
               onChanged: _saving
                   ? null
-                  : (value) {
-                      if (value != null) {
-                        setState(() => _category = value);
-                      }
+                  : (v) {
+                      if (v != null) setState(() => _category = v);
                     },
             ),
-            const SizedBox(height: 12),
             TextFormField(
               controller: _phone,
               keyboardType: TextInputType.phone,
               maxLength: 10,
               decoration: const InputDecoration(labelText: 'Hotline *'),
-              validator: (value) =>
-                  RegExp(r'^0[0-9]{9}$').hasMatch(value?.trim() ?? '')
+              validator: (v) => RegExp(r'^0[0-9]{9}$').hasMatch(v?.trim() ?? '')
                   ? null
-                  : 'Hotline phải có 10 chữ số và bắt đầu bằng 0.',
+                  : 'Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0.',
             ),
             TextFormField(
               controller: _address,
-              minLines: 1,
               maxLines: 2,
-              decoration: const InputDecoration(labelText: 'Địa chỉ *'),
-              validator: (value) => (value?.trim().isEmpty ?? true)
-                  ? 'Vui lòng nhập địa chỉ tiệm.'
-                  : null,
+              decoration: const InputDecoration(
+                labelText: 'Địa chỉ (có thể sửa) *',
+              ),
+              validator: (v) => (v?.trim().isNotEmpty ?? false)
+                  ? null
+                  : 'Vui lòng nhập địa chỉ tiệm.',
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _saving
-                        ? null
-                        : () => _selectTime(opening: true),
+                    onPressed: _saving ? null : () => _selectTime(true),
                     icon: const Icon(Icons.schedule),
                     label: Text('Mở: ${_openTime.format(context)}'),
                   ),
@@ -220,18 +279,19 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _saving
-                        ? null
-                        : () => _selectTime(opening: false),
+                    onPressed: _saving ? null : () => _selectTime(false),
                     icon: const Icon(Icons.schedule),
                     label: Text('Đóng: ${_closeTime.format(context)}'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            const Text('Tọa độ tiệm (tạm nhập tay; UC-10 sẽ có bản đồ)'),
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: _saving ? null : _pickLocation,
+              icon: const Icon(Icons.map_outlined),
+              label: const Text('Chọn vị trí trên bản đồ'),
+            ),
             Row(
               children: [
                 Expanded(
@@ -242,15 +302,10 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
                       signed: true,
                     ),
                     decoration: const InputDecoration(labelText: 'Vĩ độ *'),
-                    validator: (value) {
-                      final number = double.tryParse(value?.trim() ?? '');
-                      return number != null &&
-                              number.isFinite &&
-                              number >= -90 &&
-                              number <= 90
-                          ? null
-                          : 'Vĩ độ -90 đến 90';
-                    },
+                    validator: (v) => ShopLocationRules.validateCoordinates(
+                      double.tryParse(v?.trim() ?? ''),
+                      double.tryParse(_longitude.text.trim()),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -262,40 +317,49 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
                       signed: true,
                     ),
                     decoration: const InputDecoration(labelText: 'Kinh độ *'),
-                    validator: (value) {
-                      final number = double.tryParse(value?.trim() ?? '');
-                      return number != null &&
-                              number.isFinite &&
-                              number >= -180 &&
-                              number <= 180
-                          ? null
-                          : 'Kinh độ -180 đến 180';
-                    },
+                    validator: (v) => ShopLocationRules.validateCoordinates(
+                      double.tryParse(_latitude.text.trim()),
+                      double.tryParse(v?.trim() ?? ''),
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _saving ? null : _selectImage,
+              icon: const Icon(Icons.image_outlined),
+              label: Text(
+                _image == null
+                    ? 'Chọn ảnh mặt tiền JPG/PNG'
+                    : 'Đã chọn: ${_image!.name}',
+              ),
+            ),
+            if (_imageUrl.text.trim().isNotEmpty)
+              Image.network(
+                _imageUrl.text.trim(),
+                height: 120,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) =>
+                    const Text('Không hiển thị được ảnh hiện tại.'),
+              ),
             TextFormField(
               controller: _imageUrl,
-              keyboardType: TextInputType.url,
               decoration: const InputDecoration(
-                labelText: 'URL ảnh (tùy chọn)',
-                helperText:
-                    'Tải ảnh JPG/PNG sẽ bổ sung khi nhóm duyệt dependency.',
+                labelText: 'URL ảnh hiện tại (tùy chọn)',
               ),
-              validator: (value) {
-                final text = value?.trim() ?? '';
-                if (text.isEmpty) return null;
-                final uri = Uri.tryParse(text);
-                return uri != null &&
-                        uri.hasAuthority &&
-                        (uri.scheme == 'https' || uri.scheme == 'http')
+              validator: (v) {
+                final value = v?.trim() ?? '';
+                if (value.isEmpty) return null;
+                final u = Uri.tryParse(value);
+                return u != null &&
+                        u.hasAuthority &&
+                        (u.scheme == 'https' || u.scheme == 'http')
                     ? null
-                    : 'Nhập đường dẫn http(s) hợp lệ.';
+                    : 'Đường dẫn ảnh không hợp lệ.';
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: _saving

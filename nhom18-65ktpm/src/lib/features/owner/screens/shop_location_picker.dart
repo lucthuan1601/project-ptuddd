@@ -1,12 +1,30 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../repositories/auth_repository.dart';
+import '../data/shop_location_rules.dart';
+
+class ShopPickedLocation {
+  const ShopPickedLocation({required this.position, required this.address});
+
+  final LatLng position;
+  final String address;
+}
+
 class ShopLocationPicker extends StatefulWidget {
-  const ShopLocationPicker({super.key, this.initialPosition});
+  const ShopLocationPicker({
+    super.key,
+    this.initialPosition,
+    this.initialAddress,
+  });
 
   final LatLng? initialPosition;
+  final String? initialAddress;
 
   @override
   State<ShopLocationPicker> createState() => _ShopLocationPickerState();
@@ -15,144 +33,230 @@ class ShopLocationPicker extends StatefulWidget {
 class _ShopLocationPickerState extends State<ShopLocationPicker> {
   static const _defaultCenter = LatLng(21.0285, 105.8542);
 
-  final _latitudeController = TextEditingController();
-  final _longitudeController = TextEditingController();
-
-  GoogleMapController? _mapController;
+  final geocoding.Geocoding _geocoder = geocoding.Geocoding(
+    locale: const Locale('vi', 'VN'),
+  );
+  final _latitude = TextEditingController();
+  final _longitude = TextEditingController();
+  final _address = TextEditingController();
+  final _search = TextEditingController();
+  GoogleMapController? _controller;
   LatLng? _selected;
-  bool _loadingGps = false;
-  int _manualSelectionVersion = 0;
+  bool _busyGps = false;
+  bool _busySearch = false;
+  bool _busyAddress = false;
+  int _manualVersion = 0;
+  int _addressVersion = 0;
 
   @override
   void initState() {
     super.initState();
     _selected = widget.initialPosition;
+    _address.text = widget.initialAddress ?? '';
     if (_selected != null) {
       _fillCoordinates(_selected!);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_useGps());
+      });
     }
   }
 
   @override
   void dispose() {
-    _mapController?.dispose();
-    _latitudeController.dispose();
-    _longitudeController.dispose();
+    _controller?.dispose();
+    _latitude.dispose();
+    _longitude.dispose();
+    _address.dispose();
+    _search.dispose();
     super.dispose();
   }
 
   void _fillCoordinates(LatLng position) {
-    _latitudeController.text = position.latitude.toStringAsFixed(6);
-    _longitudeController.text = position.longitude.toStringAsFixed(6);
+    _latitude.text = position.latitude.toStringAsFixed(6);
+    _longitude.text = position.longitude.toStringAsFixed(6);
   }
 
-  void _select(LatLng position, {bool manual = true}) {
-    if (manual) {
-      _manualSelectionVersion++;
-    }
-    setState(() {
-      _selected = position;
-      _fillCoordinates(position);
-    });
-  }
-
-  void _showError(String message) {
+  void _message(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _useGps() async {
-    if (_loadingGps) {
+  String _formatAddress(geocoding.Placemark p) {
+    return [
+          p.street,
+          p.subLocality,
+          p.locality,
+          p.subAdministrativeArea,
+          p.administrativeArea,
+          p.country,
+        ]
+        .whereType<String>()
+        .map((v) => v.trim())
+        .where((v) => v.isNotEmpty)
+        .toSet()
+        .join(', ');
+  }
+
+  Future<void> _reverseGeocode(LatLng point) async {
+    final version = ++_addressVersion;
+    setState(() => _busyAddress = true);
+    try {
+      final places = await _geocoder.placemarkFromCoordinates(
+        point.latitude,
+        point.longitude,
+      );
+      if (!mounted || version != _addressVersion || places.isEmpty) return;
+      final address = _formatAddress(places.first);
+      if (address.isNotEmpty) _address.text = address;
+    } catch (_) {
+      if (mounted && version == _addressVersion) {
+        _message('Chưa lấy được địa chỉ. Bạn có thể nhập địa chỉ thủ công.');
+      }
+    } finally {
+      if (mounted && version == _addressVersion) {
+        setState(() => _busyAddress = false);
+      }
+    }
+  }
+
+  void _select(LatLng point, {bool manual = true}) {
+    final error = ShopLocationRules.validateCoordinates(
+      point.latitude,
+      point.longitude,
+    );
+    if (error != null) {
+      _message(error);
       return;
     }
-    final versionBeforeRequest = _manualSelectionVersion;
-    setState(() => _loadingGps = true);
+    if (manual) _manualVersion++;
+    setState(() {
+      _selected = point;
+      _fillCoordinates(point);
+      _address.clear();
+    });
+    unawaited(_reverseGeocode(point));
+  }
 
+  Future<void> _moveTo(LatLng point, {bool manual = true}) async {
+    if (ShopLocationRules.validateCoordinates(
+          point.latitude,
+          point.longitude,
+        ) !=
+        null) {
+      _message('Vị trí không nằm trong phạm vi phục vụ.');
+      return;
+    }
+    _select(point, manual: manual);
+    await _controller?.animateCamera(CameraUpdate.newLatLngZoom(point, 16));
+  }
+
+  Future<void> _useGps() async {
+    if (_busyGps) return;
+    final version = _manualVersion;
+    setState(() => _busyGps = true);
     try {
       if (!kIsWeb) {
         if (!await Geolocator.isLocationServiceEnabled()) {
-          throw Exception('Dich vu vi tri dang tat. Hay bat GPS.');
+          throw const AppException('GPS đang tắt. Hãy bật dịch vụ vị trí.');
         }
-
         var permission = await Geolocator.checkPermission();
         if (permission == LocationPermission.denied) {
           permission = await Geolocator.requestPermission();
         }
-        if (permission == LocationPermission.denied) {
-          throw Exception('Ban chua cap quyen vi tri.');
-        }
-        if (permission == LocationPermission.deniedForever) {
-          throw Exception('Quyen vi tri da bi chan trong cai dat.');
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          throw const AppException(
+            'Bạn chưa cấp quyền vị trí. Hãy tìm địa chỉ hoặc đặt ghim thủ công.',
+          );
         }
       }
-
-      final position = await Geolocator.getCurrentPosition(
+      final p = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
           timeLimit: Duration(seconds: 15),
         ),
       );
-
-      if (!mounted || _manualSelectionVersion != versionBeforeRequest) {
-        return;
-      }
-      final point = LatLng(position.latitude, position.longitude);
-      _select(point, manual: false);
-      await _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(point, 16),
+      if (!mounted || _manualVersion != version) return;
+      await _moveTo(LatLng(p.latitude, p.longitude), manual: false);
+    } on AppException catch (e) {
+      _message(e.message);
+    } catch (_) {
+      _message(
+        'Không lấy được GPS. Hãy nhập địa chỉ hoặc chọn vị trí trên bản đồ.',
       );
-    } catch (error) {
-      if (mounted) {
-        _showError(
-          'Khong lay duoc GPS: $error. Co the cham ban do de chon tay.',
-        );
-      }
     } finally {
-      if (mounted) {
-        setState(() => _loadingGps = false);
-      }
+      if (mounted) setState(() => _busyGps = false);
     }
   }
 
-  LatLng? _readCoordinates() {
-    final lat = double.tryParse(_latitudeController.text.trim());
-    final lng = double.tryParse(_longitudeController.text.trim());
-    if (lat == null ||
-        lng == null ||
-        !lat.isFinite ||
-        !lng.isFinite ||
-        lat < -90 ||
-        lat > 90 ||
-        lng < -180 ||
-        lng > 180) {
-      return null;
+  Future<void> _findAddress() async {
+    final text = _search.text.trim();
+    if (text.isEmpty || _busySearch) return;
+    setState(() => _busySearch = true);
+    try {
+      final matches = await _geocoder.locationFromAddress(text);
+      if (matches.isEmpty) {
+        throw const AppException('Không tìm thấy địa chỉ này.');
+      }
+      final first = matches.first;
+      final point = LatLng(first.latitude, first.longitude);
+      if (ShopLocationRules.validateCoordinates(
+            point.latitude,
+            point.longitude,
+          ) !=
+          null) {
+        throw const AppException('Vị trí không nằm trong phạm vi phục vụ.');
+      }
+      await _moveTo(point);
+    } on AppException catch (e) {
+      _message(e.message);
+    } catch (_) {
+      _message(
+        'Không tìm được địa chỉ. Hãy đặt ghim hoặc nhập tọa độ thủ công.',
+      );
+    } finally {
+      if (mounted) setState(() => _busySearch = false);
     }
-    return LatLng(lat, lng);
   }
 
   Future<void> _applyCoordinates() async {
-    final point = _readCoordinates();
-    if (point == null) {
-      _showError('Vi do phai tu -90 den 90, kinh do tu -180 den 180.');
+    final latitude = double.tryParse(_latitude.text.trim());
+    final longitude = double.tryParse(_longitude.text.trim());
+    final error = ShopLocationRules.validateCoordinates(latitude, longitude);
+    if (error != null) {
+      _message(error);
       return;
     }
-    _select(point);
-    await _mapController?.animateCamera(CameraUpdate.newLatLngZoom(point, 16));
+    await _moveTo(LatLng(latitude!, longitude!));
   }
 
   void _confirm() {
-    final point = _readCoordinates();
-    if (point == null) {
-      _showError('Hay chon hoac nhap vi tri hop le.');
+    final latitude = double.tryParse(_latitude.text.trim());
+    final longitude = double.tryParse(_longitude.text.trim());
+    final error = ShopLocationRules.validateCoordinates(latitude, longitude);
+    if (error != null) {
+      _message(error);
       return;
     }
-    Navigator.of(context).pop(point);
+    if (_address.text.trim().isEmpty) {
+      _message('Vui lòng nhập địa chỉ tiệm trước khi xác nhận.');
+      return;
+    }
+    Navigator.of(context).pop(
+      ShopPickedLocation(
+        position: LatLng(latitude!, longitude!),
+        address: _address.text.trim(),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final selected = _selected;
     return Scaffold(
-      appBar: AppBar(title: const Text('Ghim vi tri tiem - UC-10')),
+      appBar: AppBar(title: const Text('Ghim vị trí tiệm')),
       body: Column(
         children: [
           Expanded(
@@ -162,10 +266,12 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
                 zoom: 14,
               ),
               onMapCreated: (controller) {
-                _mapController = controller;
+                _controller = controller;
                 if (_selected != null) {
-                  controller.animateCamera(
-                    CameraUpdate.newLatLngZoom(_selected!, 16),
+                  unawaited(
+                    controller.animateCamera(
+                      CameraUpdate.newLatLngZoom(_selected!, 16),
+                    ),
                   );
                 }
               },
@@ -174,11 +280,11 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
                   ? <Marker>{}
                   : <Marker>{
                       Marker(
-                        markerId: const MarkerId('my_shop'),
+                        markerId: const MarkerId('shop'),
                         position: selected,
                         draggable: true,
                         onDragEnd: _select,
-                        infoWindow: const InfoWindow(title: 'Vi tri tiem'),
+                        infoWindow: const InfoWindow(title: 'Vị trí tiệm'),
                       ),
                     },
               zoomControlsEnabled: true,
@@ -186,73 +292,85 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
               mapToolbarEnabled: false,
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 350),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.all(12),
               children: [
-                Text(
-                  selected == null
-                      ? 'Cham len ban do, keo ghim hoac nhap toa do.'
-                      : 'Ghim: ${selected.latitude.toStringAsFixed(6)}, '
-                            '${selected.longitude.toStringAsFixed(6)}',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
-                        controller: _latitudeController,
+                        controller: _search,
                         decoration: const InputDecoration(
-                          labelText: 'Vi do',
-                          isDense: true,
+                          labelText: 'Tìm đường hoặc thành phố',
                         ),
+                        onSubmitted: (_) => _findAddress(),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.search),
+                      tooltip: 'Tìm địa chỉ',
+                      onPressed: _busySearch ? null : _findAddress,
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _latitude,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
                         ),
+                        decoration: const InputDecoration(labelText: 'Vĩ độ'),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
-                        controller: _longitudeController,
-                        decoration: const InputDecoration(
-                          labelText: 'Kinh do',
-                          isDense: true,
-                        ),
+                        controller: _longitude,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
                         ),
+                        decoration: const InputDecoration(labelText: 'Kinh độ'),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _applyCoordinates,
-                  icon: const Icon(Icons.place),
-                  label: const Text('Dat ghim theo toa do'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _loadingGps ? null : _useGps,
-                  icon: _loadingGps
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.my_location),
-                  label: Text(
-                    _loadingGps ? 'Dang lay GPS...' : 'Dung vi tri hien tai',
+                if (_busyAddress) const LinearProgressIndicator(),
+                TextField(
+                  controller: _address,
+                  decoration: const InputDecoration(
+                    labelText: 'Địa chỉ xem trước (có thể sửa)',
                   ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _applyCoordinates,
+                      icon: const Icon(Icons.place),
+                      label: const Text('Đặt ghim'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _busyGps ? null : _useGps,
+                      icon: const Icon(Icons.my_location),
+                      label: Text(
+                        _busyGps ? 'Đang lấy GPS...' : 'Vị trí hiện tại',
+                      ),
+                    ),
+                  ],
                 ),
                 FilledButton.icon(
                   onPressed: _confirm,
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('Xac nhan vi tri'),
+                  icon: const Icon(Icons.check),
+                  label: const Text('Xác nhận vị trí này'),
                 ),
               ],
             ),
