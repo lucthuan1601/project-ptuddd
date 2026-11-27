@@ -61,4 +61,17 @@ void main() {
     expect(item.shopId, isNull);
     expect(item.volunteerId, 'v1');
   });
+
+  test('sosTimeLeft đếm ngược 5 phút từ lúc tạo ca, không âm', () {
+    final created = DateTime(2026, 1, 1, 8);
+    expect(
+      sosTimeLeft(created, now: created.add(const Duration(minutes: 2))),
+      const Duration(minutes: 3),
+    );
+    expect(
+      sosTimeLeft(created, now: created.add(const Duration(minutes: 9))),
+      Duration.zero,
+    );
+    expect(sosTimeLeft(null), sosTimeout);
+  });
 }
