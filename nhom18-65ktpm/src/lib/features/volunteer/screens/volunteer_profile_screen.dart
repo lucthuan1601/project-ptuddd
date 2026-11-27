@@ -224,7 +224,12 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                 child: ListTile(
                   leading: const Icon(Icons.verified_user),
                   title: const Text('Trạng thái hồ sơ'),
-                  subtitle: Text(volunteerStatusLabel(old.status)),
+                  subtitle: Text(
+                    volunteerStatusLabel(
+                      old.status,
+                      rejectionReason: old.rejectionReason,
+                    ),
+                  ),
                 ),
               ),
             const SizedBox(height: 12),
