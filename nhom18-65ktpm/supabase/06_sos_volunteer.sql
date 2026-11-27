@@ -100,6 +100,8 @@ $$;
 -- ============================================================
 -- 4. Khóa ca: mỗi tiệm / TNV chỉ xử lý một ca tại một thời điểm (UC-12)
 -- Thay accept_sos trong 03_functions.sql (giữ nguyên chữ ký hàm).
+-- Ca chờ quá 5 phút coi như hết hạn (UC-07 E2): không nhận được nữa,
+-- app rider tự chuyển ca sang cancelled.
 -- ============================================================
 create unique index if not exists sos_one_active_shop
   on public.sos_requests (accepted_shop_id)
@@ -168,6 +170,7 @@ begin
            accepted_volunteer_id = p_volunteer_id
      where id = p_sos_id
        and status = 'pending'
+       and created_at > now() - interval '5 minutes'
        and rider_id <> auth.uid()
     returning * into v_row;
   exception
