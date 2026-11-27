@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../models/shop.dart';
 import '../../../models/sos_request.dart';
 import '../../../repositories/auth_repository.dart';
 import '../../../repositories/shop_repository.dart';
@@ -27,6 +28,7 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
 
   Future<SosContact>? _contact;
   Future<int>? _helpers;
+  Future<List<Shop>>? _nearbyShops;
   Timer? _timeout;
   bool _cancelling = false;
   bool _timedOut = false;
@@ -58,6 +60,15 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
       _timedOut = false;
       return;
     }
+    if (!mounted) return;
+    setState(() {
+      _nearbyShops = ShopRepository().nearby(
+        latitude: sos.latitude,
+        longitude: sos.longitude,
+        radiusMeters: 10000,
+        openOnly: true,
+      );
+    });
   }
 
   Future<void> _review(String shopId) async {
@@ -166,14 +177,7 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
                 );
               default:
                 _timeout?.cancel();
-                if (_timedOut) {
-                  return _Message(
-                    icon: Icons.timer_off,
-                    text:
-                        'Chưa có ai tiếp nhận sau ${sosTimeout.inMinutes} phút nên yêu cầu đã tự hủy. '
-                        'Bạn hãy gọi trực tiếp cho tiệm gần nhất hoặc gửi lại yêu cầu SOS.',
-                  );
-                }
+                if (_timedOut) return _TimedOut(nearbyShops: _nearbyShops);
                 return const _Message(
                   icon: Icons.cancel_outlined,
                   text: 'Bạn đã hủy yêu cầu cứu hộ này.',
@@ -288,6 +292,68 @@ class _WaitingState extends State<_Waiting>
           ],
         ),
       ),
+    );
+  }
+}
+
+/// UC-07 E2: hết thời gian chờ, gợi ý gọi trực tiếp tiệm gần nhất hoặc số khẩn cấp.
+class _TimedOut extends StatelessWidget {
+  const _TimedOut({required this.nearbyShops});
+
+  final Future<List<Shop>>? nearbyShops;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const Icon(Icons.timer_off, size: 64),
+        const SizedBox(height: 16),
+        Text(
+          'Chưa có ai tiếp nhận sau ${sosTimeout.inMinutes} phút nên yêu cầu đã tự hủy.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Bạn hãy gọi trực tiếp cho tiệm gần nhất hoặc gửi lại yêu cầu SOS.',
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+        FutureBuilder<List<Shop>>(
+          future: nearbyShops,
+          builder: (context, snapshot) {
+            final shops = (snapshot.data ?? const <Shop>[])
+                .where((shop) => shop.phone.isNotEmpty)
+                .take(5);
+            return Column(
+              children: [
+                for (final shop in shops)
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.store),
+                      title: Text(shop.name),
+                      subtitle: Text(
+                        [
+                          if (shop.distanceM != null)
+                            formatDistance(shop.distanceM!),
+                          shop.phone,
+                        ].join(' · '),
+                      ),
+                      trailing: IconButton.filled(
+                        tooltip: 'Gọi ngay',
+                        onPressed: () => launchPhoneCall(context, shop.phone),
+                        icon: const Icon(Icons.call),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        const _HotlineCard(message: 'Số khẩn cấp'),
+      ],
     );
   }
 }
