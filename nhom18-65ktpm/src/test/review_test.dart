@@ -79,4 +79,13 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('ReviewForm đếm số ký tự còn lại', (tester) async {
+    await pumpForm(tester, (_, _) async {});
+
+    expect(find.text('Còn 500 ký tự'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'abc');
+    await tester.pump();
+    expect(find.text('Còn 497 ký tự'), findsOneWidget);
+  });
 }
