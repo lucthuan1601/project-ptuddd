@@ -155,6 +155,12 @@ class _ReviewFormState extends State<ReviewForm> {
           decoration: const InputDecoration(
             labelText: 'Nhận xét (không bắt buộc)',
           ),
+          buildCounter: (
+            _, {
+            required currentLength,
+            required isFocused,
+            maxLength,
+          }) => Text('Còn ${reviewCommentMaxLength - currentLength} ký tự'),
         ),
         if (_error != null) ...[
           Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
