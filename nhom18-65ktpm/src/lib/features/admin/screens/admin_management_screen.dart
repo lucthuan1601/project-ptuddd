@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
 import '../../../models/shop.dart';
 import '../../../models/user.dart';
 import '../../../models/volunteer_profile.dart';
@@ -7,9 +8,16 @@ import '../../../repositories/auth_repository.dart';
 import '../data/admin_management_repository.dart';
 
 class AdminManagementScreen extends StatefulWidget {
-  const AdminManagementScreen({super.key, this.embedded = false});
+  const AdminManagementScreen({
+    super.key,
+    this.embedded = false,
+    this.initialStatusFilter,
+    this.initialTabIndex = 0,
+  });
 
   final bool embedded;
+  final String? initialStatusFilter;
+  final int initialTabIndex;
 
   @override
   State<AdminManagementScreen> createState() => _AdminManagementScreenState();
@@ -26,7 +34,17 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
   @override
   void initState() {
     super.initState();
+    _statusFilter = widget.initialStatusFilter;
     _future = _repository.load();
+  }
+
+  @override
+  void didUpdateWidget(AdminManagementScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialStatusFilter != oldWidget.initialStatusFilter &&
+        widget.initialStatusFilter != null) {
+      setState(() => _statusFilter = widget.initialStatusFilter);
+    }
   }
 
   @override
@@ -37,7 +55,9 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
 
   Future<void> _reload() async {
     final next = _repository.load();
-    setState(() => _future = next);
+    setState(() {
+      _future = next;
+    });
     try {
       await next;
     } catch (_) {
@@ -71,8 +91,13 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
         false;
   }
 
-  /// UC-14 A1/E2: yêu cầu nhập lý do từ chối từ 5–300 ký tự.
-  Future<String?> _askRejectionReason(String title) async {
+  /// UC-14 A1/A2/E2: yêu cầu nhập lý do (từ chối hoặc khóa tài khoản) từ 5–300 ký tự.
+  Future<String?> _askReason(
+    String title, {
+    required String label,
+    required String hint,
+    required String confirmLabel,
+  }) async {
     final controller = TextEditingController();
     String? error;
     final reason = await showDialog<String>(
@@ -85,8 +110,8 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
             maxLines: 3,
             maxLength: 300,
             decoration: InputDecoration(
-              labelText: 'Lý do từ chối *',
-              hintText: 'VD: Địa chỉ chưa rõ ràng / ảnh giấy tờ bị mờ',
+              labelText: label,
+              hintText: hint,
               errorText: error,
             ),
           ),
@@ -106,7 +131,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                 }
                 Navigator.pop(dialogContext, text);
               },
-              child: const Text('Từ chối'),
+              child: Text(confirmLabel),
             ),
           ],
         ),
@@ -147,9 +172,28 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     Future<void> Function(String reason) action,
   ) async {
     if (_busy) return;
-    final reason = await _askRejectionReason(title);
+    final reason = await _askReason(
+      title,
+      label: 'Lý do từ chối *',
+      hint: 'VD: Địa chỉ chưa rõ ràng / ảnh giấy tờ bị mờ',
+      confirmLabel: 'Từ chối',
+    );
     if (reason == null || !mounted) return;
     await _runAction(() => action(reason));
+  }
+
+  Future<void> _banUser(UserModel user) async {
+    if (_busy) return;
+    final reason = await _askReason(
+      'Khóa tài khoản ${user.fullName}',
+      label: 'Lý do khóa tài khoản *',
+      hint: 'VD: Vi phạm quy định cộng đồng / thông tin không trung thực',
+      confirmLabel: 'Khóa tài khoản',
+    );
+    if (reason == null || !mounted) return;
+    await _runAction(
+      () => _repository.changeUserStatus(user, 'banned', reason: reason),
+    );
   }
 
   Future<void> _viewIdCard(VolunteerProfile volunteer) async {
@@ -185,13 +229,12 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     }
   }
 
-  String _stateLabel(String value) => switch (value) {
-    'pending' => 'Chờ duyệt',
-    'approved' => 'Đã duyệt',
-    'rejected' => 'Bị từ chối',
-    'banned' => 'Đã khóa',
-    'active' => 'Hoạt động',
-    _ => value,
+  String _roleLabel(String role) => switch (role) {
+    'rider' => 'Khách hàng',
+    'owner' => 'Chủ tiệm',
+    'volunteer' => 'Tình nguyện viên',
+    'admin' => 'Quản trị viên',
+    _ => role,
   };
 
   bool _matchesQuery(Iterable<String> fields) {
@@ -257,32 +300,74 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
 
   Widget _userCard(UserModel user) {
     final banned = user.status == 'banned';
+    final theme = Theme.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(user.fullName, style: Theme.of(context).textTheme.titleMedium),
-            Text(user.email),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: theme.colorScheme.primaryContainer,
+                  child: Text(
+                    user.fullName.isNotEmpty
+                        ? user.fullName.trim().substring(0, 1).toUpperCase()
+                        : '?',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user.fullName,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        _roleLabel(user.role),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                buildStatusBadge(user.status),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text('Email: ${user.email}'),
+            const SizedBox(height: 2),
             Text('SĐT: ${user.phone}'),
-            Text('Vai trò: ${user.role}'),
-            Text('Trạng thái: ${_stateLabel(user.status)}'),
+            if (banned && (user.banReason?.trim().isNotEmpty ?? false)) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Lý do khóa: ${user.banReason}',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ],
+            const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
               child: OutlinedButton.icon(
                 onPressed: _busy || user.role == 'admin'
                     ? null
-                    : () => _execute(
-                        banned ? 'Mở khóa tài khoản?' : 'Khóa tài khoản?',
-                        banned
-                            ? 'Mở khóa tài khoản ${user.fullName} và khôi phục tiệm/hồ sơ liên quan.'
-                            : 'Khóa tài khoản ${user.fullName} (đồng thời khóa tiệm/hồ sơ TNV và trả ca SOS đang xử lý về chờ nhận).',
-                        () => _repository.changeUserStatus(
-                          user,
-                          banned ? 'active' : 'banned',
-                        ),
-                      ),
+                    : () => banned
+                        ? _execute(
+                            'Mở khóa tài khoản?',
+                            'Mở khóa tài khoản ${user.fullName} và khôi phục tiệm/hồ sơ liên quan.',
+                            () => _repository.changeUserStatus(user, 'active'),
+                          )
+                        : _banUser(user),
                 icon: Icon(banned ? Icons.lock_open : Icons.lock_outline),
                 label: Text(
                   user.role == 'admin'
@@ -301,27 +386,70 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
 
   Widget _shopCard(Shop shop) {
     final status = shop.status;
+    final theme = Theme.of(context);
+    final isGas = shop.category == 'gas_station';
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(shop.name, style: Theme.of(context).textTheme.titleMedium),
-            Text(shop.category == 'gas_station' ? 'Cây xăng' : 'Tiệm sửa xe'),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: isGas
+                      ? const Color(0xFFE3F2FD)
+                      : const Color(0xFFFFF3E0),
+                  child: Icon(
+                    isGas ? Icons.local_gas_station : Icons.build,
+                    size: 18,
+                    color: isGas
+                        ? const Color(0xFF1565C0)
+                        : const Color(0xFFE65100),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        shop.name,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        isGas ? 'Cây xăng' : 'Tiệm sửa xe',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                buildStatusBadge(status),
+              ],
+            ),
+            const SizedBox(height: 10),
             Text('Địa chỉ: ${shop.address}'),
+            const SizedBox(height: 2),
             Text('SĐT: ${shop.phone}'),
-            Text('Trạng thái: ${_stateLabel(status)}'),
-            if (shop.rejectionReason?.trim().isNotEmpty ?? false)
-              Text('Lý do từ chối: ${shop.rejectionReason}'),
+            if (shop.rejectionReason?.trim().isNotEmpty ?? false) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Lý do từ chối: ${shop.rejectionReason}',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ],
             if (shop.imageUrl != null && shop.imageUrl!.trim().isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                   child: Image.network(
                     shop.imageUrl!,
-                    height: 120,
+                    height: 130,
                     width: double.infinity,
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) =>
@@ -329,13 +457,16 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                   ),
                 ),
               ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 6,
               children: [
                 if (status != 'approved')
                   FilledButton.tonal(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                    ),
                     onPressed: _busy
                         ? null
                         : () => _execute(
@@ -396,26 +527,64 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
   ) {
     final status = volunteer.status;
     final user = userById[volunteer.userId];
+    final theme = Theme.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              user?.fullName ?? 'TNV (${volunteer.phone})',
-              style: Theme.of(context).textTheme.titleMedium,
+            Row(
+              children: [
+                const CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Color(0xFFE0F2F1),
+                  child: Icon(
+                    Icons.volunteer_activism,
+                    size: 18,
+                    color: Color(0xFF00695C),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user?.fullName ?? 'TNV (${volunteer.phone})',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (user != null)
+                        Text(user.email, style: theme.textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                buildStatusBadge(status),
+              ],
             ),
-            if (user != null) Text(user.email),
+            const SizedBox(height: 10),
             Text('SĐT: ${volunteer.phone}'),
+            const SizedBox(height: 2),
             Text('Kỹ năng: ${volunteer.skills.join(', ')}'),
-            if (volunteer.tools?.trim().isNotEmpty ?? false)
+            if (volunteer.tools?.trim().isNotEmpty ?? false) ...[
+              const SizedBox(height: 2),
               Text('Dụng cụ: ${volunteer.tools}'),
-            Text('Bán kính: ${volunteer.serviceRadiusKm} km'),
-            Text('Trạng thái: ${_stateLabel(status)}'),
-            if (volunteer.rejectionReason?.trim().isNotEmpty ?? false)
-              Text('Lý do từ chối: ${volunteer.rejectionReason}'),
-            const SizedBox(height: 6),
+            ],
+            const SizedBox(height: 2),
+            Text(
+              'Bán kính: ${volunteer.serviceRadiusKm} km · Đã hỗ trợ: ${volunteer.completedCount} ca',
+            ),
+            if (volunteer.rejectionReason?.trim().isNotEmpty ?? false) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Lý do từ chối: ${volunteer.rejectionReason}',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ],
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 6,
@@ -426,6 +595,9 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                 ),
                 if (status != 'approved')
                   FilledButton.tonal(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                    ),
                     onPressed: _busy
                         ? null
                         : () => _execute(
@@ -594,6 +766,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
 
     return DefaultTabController(
       length: 3,
+      initialIndex: widget.initialTabIndex,
       child: widget.embedded
           ? body
           : Scaffold(

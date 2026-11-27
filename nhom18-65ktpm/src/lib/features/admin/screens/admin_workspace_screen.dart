@@ -13,6 +13,16 @@ class AdminWorkspaceScreen extends StatefulWidget {
 
 class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
   int _tab = 0;
+  String? _managementStatusFilter;
+  int _managementVersion = 0;
+
+  void _openPendingReview() {
+    setState(() {
+      _managementStatusFilter = 'pending';
+      _managementVersion++;
+      _tab = 0;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,8 +38,15 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         ],
       ),
       body: _tab == 0
-          ? const AdminManagementScreen(embedded: true)
-          : const AdminStatisticsScreen(embedded: true),
+          ? AdminManagementScreen(
+              key: ValueKey(_managementVersion),
+              embedded: true,
+              initialStatusFilter: _managementStatusFilter,
+            )
+          : AdminStatisticsScreen(
+              embedded: true,
+              onOpenPending: _openPendingReview,
+            ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() => _tab = i),

@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../../core/supabase_client.dart';
 import '../../../core/supabase_errors.dart';
 import '../../../models/shop.dart';
@@ -65,7 +67,11 @@ class AdminManagementRepository {
     });
   }
 
-  Future<void> changeUserStatus(UserModel user, String nextStatus) {
+  Future<void> changeUserStatus(
+    UserModel user,
+    String nextStatus, {
+    String? reason,
+  }) {
     return guardSupabase(() async {
       final adminId = await _requireAdmin();
       if (nextStatus != 'active' && nextStatus != 'banned') {
@@ -74,11 +80,28 @@ class AdminManagementRepository {
       if (user.id == adminId || user.role == 'admin') {
         throw const AppException('Không được thay đổi tài khoản quản trị.');
       }
+      final trimmedReason = nextStatus == 'banned' ? reason?.trim() : null;
       // RPC đồng bộ khóa/mở khóa users + shops + volunteer_profiles và trả ca SOS accepted về pending.
-      await supabase.rpc(
-        'admin_set_user_status',
-        params: {'p_user_id': user.id, 'p_status': nextStatus},
-      );
+      // Hỗ trợ fallback về chữ ký RPC 2 tham số nếu Supabase chưa chạy bản 03_functions.sql mới.
+      try {
+        await supabase.rpc(
+          'admin_set_user_status',
+          params: {
+            'p_user_id': user.id,
+            'p_status': nextStatus,
+            'p_reason': trimmedReason,
+          },
+        );
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST202' &&
+            !e.message.contains('admin_set_user_status')) {
+          rethrow;
+        }
+        await supabase.rpc(
+          'admin_set_user_status',
+          params: {'p_user_id': user.id, 'p_status': nextStatus},
+        );
+      }
     });
   }
 
