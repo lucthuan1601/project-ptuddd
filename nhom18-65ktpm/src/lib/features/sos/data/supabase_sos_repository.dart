@@ -127,6 +127,17 @@ class SupabaseSosRepository implements SosRepository {
     });
   }
 
+  /// UC-07 E1: số tiệm / TNV đang được báo cho ca của rider (0 = không có ai quanh đó).
+  Future<int> countHelpers(String sosId) {
+    return guardSupabase(() async {
+      final count = await supabase.rpc(
+        'count_sos_helpers',
+        params: {'p_sos_id': sosId},
+      );
+      return (count as num?)?.toInt() ?? 0;
+    });
+  }
+
   /// Theo dõi realtime một ca (rider xem ca của mình, người nhận xem ca đang xử lý).
   /// Phát null nếu không còn đọc được ca.
   Stream<SosRequest?> watchById(String sosId) {
