@@ -70,12 +70,15 @@ String ewktPoint({required double latitude, required double longitude}) {
   return 'SRID=4326;POINT($longitude $latitude)';
 }
 
-String volunteerStatusLabel(String status) {
+String volunteerStatusLabel(String status, {String? rejectionReason}) {
   switch (status) {
     case 'approved':
       return 'Đã được duyệt';
     case 'rejected':
-      return 'Bị từ chối, vui lòng sửa và gửi lại';
+      final reason = rejectionReason?.trim() ?? '';
+      return reason.isEmpty
+          ? 'Bị từ chối, vui lòng sửa và gửi lại'
+          : 'Bị từ chối: $reason. Vui lòng sửa và gửi lại';
     case 'banned':
       return 'Đã bị khóa';
     default:
