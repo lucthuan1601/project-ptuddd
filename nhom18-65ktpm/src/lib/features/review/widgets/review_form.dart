@@ -80,6 +80,7 @@ class _ReviewFormState extends State<ReviewForm> {
   late int? _rating = widget.initialRating;
   late final _comment = TextEditingController(text: widget.initialComment);
   bool _sending = false;
+  bool _failed = false;
   String? _error;
 
   @override
@@ -103,7 +104,13 @@ class _ReviewFormState extends State<ReviewForm> {
     try {
       await widget.onSubmit(_rating!, _comment.text);
     } on AppException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      // Giữ nguyên số sao và nội dung đã nhập để người dùng bấm "Thử lại".
+      if (mounted) {
+        setState(() {
+          _error = e.message;
+          _failed = true;
+        });
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -174,7 +181,7 @@ class _ReviewFormState extends State<ReviewForm> {
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Gửi đánh giá'),
+              : Text(_failed ? 'Thử lại' : 'Gửi đánh giá'),
         ),
       ],
     );
