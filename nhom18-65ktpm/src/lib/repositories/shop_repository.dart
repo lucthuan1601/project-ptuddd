@@ -28,12 +28,21 @@ class ShopRepository {
         .toList();
   }
 
-  /// UC-04: chi tiết một tiệm.
+  /// UC-04: chi tiết một tiệm (kèm tên chủ tiệm qua RPC nếu DB đã cập nhật).
   Future<Shop?> byId(String id) async {
-    final data =
-        await supabase.from('shops').select().eq('id', id).maybeSingle();
-    if (data == null) return null;
-
-    return Shop.fromMap(Map<String, dynamic>.from(data));
+    try {
+      final rows = await supabase.rpc(
+        'get_shop_detail',
+        params: {'p_shop_id': id},
+      ) as List;
+      if (rows.isEmpty) return null;
+      return Shop.fromMap(Map<String, dynamic>.from(rows.first as Map));
+    } catch (_) {
+      // Dự phòng nếu Supabase chưa chạy bản 03_functions.sql mới nhất.
+      final data =
+          await supabase.from('shops').select().eq('id', id).maybeSingle();
+      if (data == null) return null;
+      return Shop.fromMap(Map<String, dynamic>.from(data));
+    }
   }
 }

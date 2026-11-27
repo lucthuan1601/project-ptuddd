@@ -60,6 +60,11 @@ on conflict (id) do nothing;
 -- Chạy security invoker để current_user giữ nguyên role gọi (authenticated/anon);
 -- SQL Editor và các hàm security definer chạy với postgres nên vẫn được bỏ qua.
 -- ============================================================
+-- Đảm bảo cột bổ sung tồn tại khi chạy lại file này trên CSDL đã tạo trước đó.
+alter table public.users add column if not exists ban_reason text;
+alter table public.shops add column if not exists rejection_reason text;
+alter table public.volunteer_profiles add column if not exists rejection_reason text;
+
 create or replace function public.protect_user_columns()
 returns trigger
 language plpgsql
@@ -76,6 +81,7 @@ begin
 
   new.role := old.role;
   new.status := old.status;
+  new.ban_reason := old.ban_reason;
   new.email := old.email;
   new.created_at := old.created_at;
   return new;
@@ -86,10 +92,6 @@ drop trigger if exists trg_protect_user_columns on public.users;
 create trigger trg_protect_user_columns
   before update on public.users
   for each row execute function public.protect_user_columns();
-
--- Đảm bảo cột rejection_reason tồn tại khi chạy lại file này trên CSDL đã tạo trước đó.
-alter table public.shops add column if not exists rejection_reason text;
-alter table public.volunteer_profiles add column if not exists rejection_reason text;
 
 create or replace function public.protect_shop_columns()
 returns trigger
@@ -268,8 +270,9 @@ create trigger trg_refresh_shop_rating
   for each row execute function public.refresh_shop_rating();
 
 -- ============================================================
--- 4. RPC tìm kiếm theo bán kính (PostGIS)
+-- 4. RPC tìm kiếm theo bán kính (PostGIS) & đọc tên hiển thị công khai
 -- ============================================================
+drop function if exists public.get_nearby_shops(double precision, double precision, integer, text, boolean);
 create or replace function public.get_nearby_shops(
   p_lat double precision,
   p_lng double precision,
@@ -280,6 +283,7 @@ create or replace function public.get_nearby_shops(
 returns table (
   id uuid,
   owner_id uuid,
+  owner_name varchar,
   name varchar,
   category varchar,
   phone varchar,
@@ -302,6 +306,7 @@ as $$
   select
     s.id,
     s.owner_id,
+    u.full_name as owner_name,
     s.name,
     s.category,
     s.phone,
@@ -319,6 +324,7 @@ as $$
       st_setsrid(st_makepoint(p_lng, p_lat), 4326)::geography
     ) as distance_m
   from public.shops s
+  left join public.users u on u.id = s.owner_id
   where s.status = 'approved'
     and (p_category is null or s.category = p_category)
     and (coalesce(p_open_only, false) = false or s.is_open)
@@ -328,6 +334,90 @@ as $$
       p_radius_m
     )
   order by distance_m;
+$$;
+
+-- UC-04: chi tiết tiệm kèm tên chủ tiệm mà không mở RLS bảng users.
+create or replace function public.get_shop_detail(p_shop_id uuid)
+returns table (
+  id uuid,
+  owner_id uuid,
+  owner_name varchar,
+  name varchar,
+  category varchar,
+  phone varchar,
+  address text,
+  latitude double precision,
+  longitude double precision,
+  open_time time,
+  close_time time,
+  is_open boolean,
+  image_url text,
+  rating numeric,
+  review_count integer,
+  status varchar,
+  rejection_reason text,
+  created_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  select
+    s.id,
+    s.owner_id,
+    u.full_name as owner_name,
+    s.name,
+    s.category,
+    s.phone,
+    s.address,
+    s.latitude,
+    s.longitude,
+    s.open_time,
+    s.close_time,
+    s.is_open,
+    s.image_url,
+    s.rating,
+    s.review_count,
+    s.status,
+    s.rejection_reason,
+    s.created_at
+  from public.shops s
+  left join public.users u on u.id = s.owner_id
+  where s.id = p_shop_id
+    and (s.status = 'approved' or s.owner_id = auth.uid() or public.is_admin());
+$$;
+
+-- UC-04/UC-08: danh sách đánh giá kèm tên người viết mà không lộ thông tin riêng tư.
+create or replace function public.get_shop_reviews(p_shop_id uuid)
+returns table (
+  id uuid,
+  shop_id uuid,
+  rider_id uuid,
+  rider_name varchar,
+  rating smallint,
+  comment text,
+  created_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  select
+    r.id,
+    r.shop_id,
+    r.rider_id,
+    u.full_name as rider_name,
+    r.rating,
+    r.comment,
+    r.created_at
+  from public.reviews r
+  join public.shops s on s.id = r.shop_id
+  left join public.users u on u.id = r.rider_id
+  where r.shop_id = p_shop_id
+    and (s.status = 'approved' or s.owner_id = auth.uid() or public.is_admin())
+  order by r.created_at desc;
 $$;
 
 create or replace function public.get_nearby_volunteers(
@@ -518,9 +608,11 @@ end;
 $$;
 
 -- UC-14 A2/A3/E4: Admin khóa/mở khóa tài khoản đồng bộ tiệm, TNV và trả ca SOS đang xử lý về pending.
+drop function if exists public.admin_set_user_status(uuid, text);
 create or replace function public.admin_set_user_status(
   p_user_id uuid,
-  p_status text
+  p_status text,
+  p_reason text default null
 )
 returns void
 language plpgsql
@@ -542,6 +634,7 @@ begin
 
   update public.users
      set status = p_status,
+         ban_reason = case when p_status = 'banned' then nullif(trim(coalesce(p_reason, '')), '') else null end,
          fcm_token = case when p_status = 'banned' then null else fcm_token end
    where id = p_user_id;
   if not found then
@@ -588,8 +681,14 @@ $$;
 -- ============================================================
 -- 6. Phân quyền gọi RPC
 -- ============================================================
-revoke all on function public.admin_set_user_status(uuid, text) from public, anon;
-grant execute on function public.admin_set_user_status(uuid, text) to authenticated;
+revoke all on function public.admin_set_user_status(uuid, text, text) from public, anon;
+grant execute on function public.admin_set_user_status(uuid, text, text) to authenticated;
+
+revoke all on function public.get_shop_detail(uuid) from public, anon;
+grant execute on function public.get_shop_detail(uuid) to authenticated;
+
+revoke all on function public.get_shop_reviews(uuid) from public, anon;
+grant execute on function public.get_shop_reviews(uuid) to authenticated;
 revoke all on function public.get_nearby_shops(double precision, double precision, integer, text, boolean) from public, anon;
 grant execute on function public.get_nearby_shops(double precision, double precision, integer, text, boolean) to authenticated;
 

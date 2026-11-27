@@ -20,12 +20,23 @@ class SupabaseReviewRepository implements ReviewRepository {
   @override
   Future<List<Review>> listByShop(String shopId) {
     return guardSupabase(() async {
-      final rows = await supabase
-          .from('reviews')
-          .select()
-          .eq('shop_id', shopId)
-          .order('created_at', ascending: false);
-      return rows.map(Review.fromMap).toList();
+      try {
+        final rows = await supabase.rpc(
+          'get_shop_reviews',
+          params: {'p_shop_id': shopId},
+        ) as List;
+        return rows
+            .map((e) => Review.fromMap(Map<String, dynamic>.from(e as Map)))
+            .toList();
+      } catch (_) {
+        // Dự phòng nếu Supabase chưa có RPC get_shop_reviews.
+        final rows = await supabase
+            .from('reviews')
+            .select()
+            .eq('shop_id', shopId)
+            .order('created_at', ascending: false);
+        return rows.map(Review.fromMap).toList();
+      }
     });
   }
 

@@ -5,6 +5,7 @@ class Review {
     required this.shopId,
     required this.riderId,
     required this.rating,
+    this.riderName,
     this.comment,
     this.createdAt,
   });
@@ -12,6 +13,7 @@ class Review {
   final String id;
   final String shopId;
   final String riderId;
+  final String? riderName;
 
   /// 1..5
   final int rating;
@@ -23,6 +25,7 @@ class Review {
       id: map['id'].toString(),
       shopId: map['shop_id']?.toString() ?? '',
       riderId: map['rider_id']?.toString() ?? '',
+      riderName: map['rider_name']?.toString(),
       rating: (map['rating'] as num?)?.toInt() ?? 5,
       comment: map['comment']?.toString(),
       createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),

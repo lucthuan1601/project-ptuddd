@@ -15,6 +15,7 @@ class Shop {
     required this.rating,
     required this.reviewCount,
     required this.status,
+    this.ownerName,
     this.rejectionReason,
     this.imageUrl,
     this.createdAt,
@@ -23,6 +24,7 @@ class Shop {
 
   final String id;
   final String ownerId;
+  final String? ownerName;
   final String name;
 
   /// repair_shop | gas_station
@@ -52,6 +54,7 @@ class Shop {
     return Shop(
       id: map['id'].toString(),
       ownerId: map['owner_id']?.toString() ?? '',
+      ownerName: map['owner_name']?.toString(),
       name: map['name']?.toString() ?? '',
       category: map['category']?.toString() ?? 'repair_shop',
       phone: map['phone']?.toString() ?? '',

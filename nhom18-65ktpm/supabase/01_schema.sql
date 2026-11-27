@@ -15,6 +15,7 @@ create table if not exists public.users (
     check (role in ('rider', 'owner', 'volunteer', 'admin')),
   status varchar(20) not null default 'active'
     check (status in ('active', 'banned')),
+  ban_reason text,
   fcm_token text,
   created_at timestamptz not null default now()
 );
@@ -96,7 +97,8 @@ create table if not exists public.reviews (
   constraint reviews_one_per_rider unique (shop_id, rider_id)
 );
 
--- Bổ sung cột lý do từ chối cho CSDL đã khởi tạo trước đó (UC-09 A2, UC-13 A2, UC-14 A1).
+-- Bổ sung cột lý do từ chối / lý do khóa cho CSDL đã khởi tạo trước đó (UC-09 A2, UC-13 A2, UC-14 A1/A2).
+alter table public.users add column if not exists ban_reason text;
 alter table public.shops add column if not exists rejection_reason text;
 alter table public.volunteer_profiles add column if not exists rejection_reason text;
 

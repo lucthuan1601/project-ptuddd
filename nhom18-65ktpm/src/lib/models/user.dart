@@ -7,6 +7,7 @@ class UserModel {
     required this.phone,
     required this.role,
     required this.status,
+    this.banReason,
     this.fcmToken,
     this.createdAt,
   });
@@ -21,6 +22,7 @@ class UserModel {
 
   /// active | banned
   final String status;
+  final String? banReason;
   final String? fcmToken;
   final DateTime? createdAt;
 
@@ -34,6 +36,7 @@ class UserModel {
       phone: map['phone']?.toString() ?? '',
       role: map['role']?.toString() ?? 'rider',
       status: map['status']?.toString() ?? 'active',
+      banReason: map['ban_reason']?.toString(),
       fcmToken: map['fcm_token']?.toString(),
       createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
     );
