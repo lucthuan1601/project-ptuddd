@@ -1,13 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/supabase_client.dart';
 import '../../features/call/call_helper.dart';
 import '../../features/map/location_service.dart';
+import '../../features/map/widgets/app_map_view.dart';
 import '../../features/navigation/screens/navigation_screen.dart';
 import '../../features/shop/screens/shop_detail_screen.dart';
 import '../../features/shop/shop_filter.dart';
@@ -27,22 +29,25 @@ class RiderShell extends StatefulWidget {
 }
 
 class _RiderShellState extends State<RiderShell> {
-  GoogleMapController? _mapController;
+  final MapController _mapController = MapController();
+  bool _mapReady = false;
 
   LatLng _currentLocation = LocationService.defaultHanoi;
   String _currentAddress = 'Đang xác định vị trí...';
   bool _isLoadingLocation = true;
   bool _isLoadingShops = false;
+  bool _locationDenied = false;
 
   // Dữ liệu tiệm
   List<Shop> _shops = [];
   String? _selectedShopId;
 
-  // Trạng thái bộ lọc (UC-03)
+  // Trạng thái bộ lọc & sắp xếp (UC-03)
   String _searchQuery = '';
   String? _selectedCategory; // null = Tất cả, 'repair_shop', 'gas_station'
   int _selectedRadius = 3000; // 3km mặc định
   bool _isOpenOnly = false;
+  ShopSort _selectedSort = ShopSort.nearest;
 
   RealtimeChannel? _shopsSubscription;
 
@@ -59,7 +64,7 @@ class _RiderShellState extends State<RiderShell> {
     if (channel != null) {
       unawaited(supabase.removeChannel(channel));
     }
-    _mapController?.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -72,7 +77,9 @@ class _RiderShellState extends State<RiderShell> {
           schema: 'public',
           table: 'shops',
           callback: (_) {
-            _fetchNearbyShops(showLoading: false);
+            if (!_locationDenied) {
+              _fetchNearbyShops(showLoading: false);
+            }
           },
         )
         .subscribe();
@@ -87,31 +94,32 @@ class _RiderShellState extends State<RiderShell> {
     if (!mounted) return;
     setState(() {
       _isLoadingLocation = false;
+      _locationDenied = res.isPermissionDenied;
       if (res.position != null) {
         _currentLocation = res.position!;
       }
-      _currentAddress = res.address ??
-          (res.position != null
-              ? 'Tọa độ: ${res.position!.latitude.toStringAsFixed(4)}, ${res.position!.longitude.toStringAsFixed(4)}'
-              : 'Hà Nội');
+      if (res.isPermissionDenied) {
+        _currentLocation = LocationService.defaultHanoi;
+        _currentAddress = 'Chưa cấp quyền vị trí (mặc định Hà Nội)';
+        _shops = [];
+        _selectedShopId = null;
+      } else {
+        _currentAddress = res.address ??
+            (res.position != null
+                ? 'Tọa độ: ${res.position!.latitude.toStringAsFixed(4)}, ${res.position!.longitude.toStringAsFixed(4)}'
+                : 'Hà Nội');
+      }
     });
+
+    if (res.isPermissionDenied) {
+      // UC-02 ngoại lệ: từ chối quyền vị trí -> chỉ hiển thị bản đồ mặc định tại Hà Nội,
+      // không thực hiện tìm kiếm quanh đây cho đến khi người dùng cấp quyền.
+      _animateCameraTo(LocationService.defaultHanoi, zoom: 12.5);
+      return;
+    }
 
     if (res.isGpsDisabled) {
       _showGpsDisabledDialog();
-    } else if (res.isPermissionDenied) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Ứng dụng không có quyền GPS. Đang hiển thị vị trí mặc định tại Hà Nội.',
-          ),
-          backgroundColor: Colors.orange,
-          action: SnackBarAction(
-            label: 'Cài đặt',
-            textColor: Colors.white,
-            onPressed: () => unawaited(Geolocator.openAppSettings()),
-          ),
-        ),
-      );
     } else if (res.errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -158,15 +166,13 @@ class _RiderShellState extends State<RiderShell> {
   }
 
   void _animateCameraTo(LatLng target, {double zoom = 14.5}) {
-    _mapController?.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: zoom),
-      ),
-    );
+    if (!_mapReady) return;
+    _mapController.move(target, zoom);
   }
 
   /// UC-03: Tải danh sách tiệm trong bán kính qua RPC PostGIS.
   Future<void> _fetchNearbyShops({bool showLoading = true}) async {
+    if (_locationDenied) return;
     if (showLoading) {
       setState(() => _isLoadingShops = true);
     }
@@ -204,51 +210,64 @@ class _RiderShellState extends State<RiderShell> {
     }
   }
 
-  List<Shop> get _filteredShops => filterShops(_shops, _searchQuery);
+  List<Shop> get _filteredShops =>
+      sortShops(filterShops(_shops, _searchQuery), _selectedSort);
 
-  Set<Marker> _buildMarkers() {
-    final markers = <Marker>{};
-
-    // Marker vị trí người dùng (chấm xanh)
-    markers.add(
+  List<Marker> _buildMarkers() {
+    final markers = <Marker>[
+      // Marker vị trí người dùng (chấm xanh)
       Marker(
-        markerId: const MarkerId('user_location'),
-        position: _currentLocation,
-        infoWindow: const InfoWindow(title: 'Vị trí của bạn'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-      ),
-    );
-
-    // Markers cho các tiệm
-    for (final shop in _filteredShops) {
-      final isRepair = shop.category == 'repair_shop';
-      final isSelected = shop.id == _selectedShopId;
-
-      markers.add(
-        Marker(
-          markerId: MarkerId(shop.id),
-          position: LatLng(shop.latitude, shop.longitude),
-          infoWindow: InfoWindow(
-            title: shop.name,
-            snippet: shop.isOpen ? 'Đang mở cửa' : 'Tạm đóng cửa',
-            onTap: () => _openShopDetail(shop),
-          ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            isSelected
-                ? BitmapDescriptor.hueViolet
-                : (isRepair
-                    ? BitmapDescriptor.hueOrange
-                    : BitmapDescriptor.hueBlue),
-          ),
-          onTap: () {
-            setState(() => _selectedShopId = shop.id);
-            _animateCameraTo(LatLng(shop.latitude, shop.longitude), zoom: 15.5);
-          },
+        point: _currentLocation,
+        width: 28,
+        height: 28,
+        child: Tooltip(
+          message: _locationDenied ? 'Hà Nội (mặc định)' : 'Vị trí của bạn',
+          child: buildUserLocationMarker(),
         ),
-      );
+      ),
+    ];
+
+    Shop? selectedShop;
+    for (final shop in _filteredShops) {
+      if (shop.id == _selectedShopId) {
+        selectedShop = shop;
+        continue;
+      }
+      markers.add(_buildShopMarker(shop, selected: false));
+    }
+    // Vẽ tiệm đang chọn sau cùng để nổi lên trên các ghim xung quanh.
+    if (selectedShop != null) {
+      markers.add(_buildShopMarker(selectedShop, selected: true));
     }
 
     return markers;
+  }
+
+  Marker _buildShopMarker(Shop shop, {required bool selected}) {
+    final isRepair = shop.category == 'repair_shop';
+    final color = selected
+        ? const Color(0xFF6A1B9A)
+        : (isRepair ? const Color(0xFFEF6C00) : const Color(0xFF1565C0));
+    return Marker(
+      point: LatLng(shop.latitude, shop.longitude),
+      width: selected ? 170 : 40,
+      height: selected ? 76 : 40,
+      alignment: selected ? Alignment.bottomCenter : Alignment.center,
+      child: buildMapPin(
+        color: color,
+        icon: isRepair ? Icons.build : Icons.local_gas_station,
+        selected: selected,
+        label: selected ? shop.name : null,
+        onTap: () {
+          if (selected) {
+            _openShopDetail(shop);
+          } else {
+            setState(() => _selectedShopId = shop.id);
+            _animateCameraTo(LatLng(shop.latitude, shop.longitude), zoom: 15.5);
+          }
+        },
+      ),
+    );
   }
 
   void _openShopDetail(Shop shop) {
@@ -290,18 +309,20 @@ class _RiderShellState extends State<RiderShell> {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. Google Map nền
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _currentLocation,
-              zoom: 14.5,
-            ),
-            onMapCreated: (controller) => _mapController = controller,
+          // 1. Bản đồ OpenStreetMap dùng chung
+          AppMapView(
+            mapController: _mapController,
+            initialCenter: _currentLocation,
+            initialZoom: 14.5,
             markers: _buildMarkers(),
-            myLocationEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
             onTap: (_) => setState(() => _selectedShopId = null),
+            onMapReady: () {
+              _mapReady = true;
+              _animateCameraTo(
+                _currentLocation,
+                zoom: _locationDenied ? 12.5 : 14.5,
+              );
+            },
           ),
 
           // 2. Thanh Top Bar địa chỉ & Đăng xuất
@@ -371,26 +392,31 @@ class _RiderShellState extends State<RiderShell> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  // Bộ lọc tìm kiếm & bán kính (UC-03)
-                  ShopFilterBar(
-                    searchQuery: _searchQuery,
-                    selectedCategory: _selectedCategory,
-                    selectedRadiusMeters: _selectedRadius,
-                    isOpenOnly: _isOpenOnly,
-                    onSearchChanged: (q) => setState(() => _searchQuery = q),
-                    onCategoryChanged: (cat) {
-                      setState(() => _selectedCategory = cat);
-                      _fetchNearbyShops();
-                    },
-                    onRadiusChanged: (rad) {
-                      setState(() => _selectedRadius = rad);
-                      _fetchNearbyShops();
-                    },
-                    onOpenOnlyChanged: (openOnly) {
-                      setState(() => _isOpenOnly = openOnly);
-                      _fetchNearbyShops();
-                    },
-                  ),
+                  if (_locationDenied)
+                    _buildLocationDeniedBanner()
+                  else
+                    // Bộ lọc tìm kiếm, bán kính & sắp xếp (UC-03)
+                    ShopFilterBar(
+                      searchQuery: _searchQuery,
+                      selectedCategory: _selectedCategory,
+                      selectedRadiusMeters: _selectedRadius,
+                      isOpenOnly: _isOpenOnly,
+                      selectedSort: _selectedSort,
+                      onSearchChanged: (q) => setState(() => _searchQuery = q),
+                      onCategoryChanged: (cat) {
+                        setState(() => _selectedCategory = cat);
+                        _fetchNearbyShops();
+                      },
+                      onRadiusChanged: (rad) {
+                        setState(() => _selectedRadius = rad);
+                        _fetchNearbyShops();
+                      },
+                      onOpenOnlyChanged: (openOnly) {
+                        setState(() => _isOpenOnly = openOnly);
+                        _fetchNearbyShops();
+                      },
+                      onSortChanged: (sort) => setState(() => _selectedSort = sort),
+                    ),
                 ],
               ),
             ),
@@ -432,31 +458,32 @@ class _RiderShellState extends State<RiderShell> {
             ),
 
           // 4. Danh sách vuốt thẻ tiệm ở phía dưới bản đồ (UC-03)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 20,
-            child: ShopCarousel(
-              shops: _filteredShops,
-              selectedShopId: _selectedShopId,
-              onShopSelected: (shop) {
-                setState(() => _selectedShopId = shop.id);
-                _animateCameraTo(LatLng(shop.latitude, shop.longitude));
-                _openShopDetail(shop);
-              },
-              onCall: (shop) => CallHelper.makeCall(context, shop.phone),
-              onNavigate: _onNavigateToShop,
-              onExpandRadius: () {
-                setState(() => _selectedRadius = 10000);
-                _fetchNearbyShops();
-              },
+          if (!_locationDenied)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 20,
+              child: ShopCarousel(
+                shops: _filteredShops,
+                selectedShopId: _selectedShopId,
+                onShopSelected: (shop) {
+                  setState(() => _selectedShopId = shop.id);
+                  _animateCameraTo(LatLng(shop.latitude, shop.longitude));
+                  _openShopDetail(shop);
+                },
+                onCall: (shop) => CallHelper.makeCall(context, shop.phone),
+                onNavigate: _onNavigateToShop,
+                onExpandRadius: () {
+                  setState(() => _selectedRadius = 10000);
+                  _fetchNearbyShops();
+                },
+              ),
             ),
-          ),
 
           // 5. Nút SOS khẩn cấp đặt phía trên carousel, không che thẻ tiệm
           Positioned(
             left: 16,
-            bottom: 176,
+            bottom: _locationDenied ? 24 : 176,
             child: FloatingActionButton.extended(
               heroTag: 'sos_fab',
               backgroundColor: Theme.of(context).colorScheme.error,
@@ -473,15 +500,86 @@ class _RiderShellState extends State<RiderShell> {
           // 6. Nút định vị GPS "Vị trí của tôi"
           Positioned(
             right: 16,
-            bottom: 180,
+            bottom: _locationDenied ? 28 : 180,
             child: FloatingActionButton.small(
               heroTag: 'my_location_fab',
               backgroundColor: Colors.white,
               foregroundColor: const Color(0xFF1E88E5),
-              onPressed: () => _animateCameraTo(_currentLocation),
+              onPressed: _locationDenied
+                  ? _initLocationAndShops
+                  : () => _animateCameraTo(_currentLocation),
               tooltip: 'Vị trí của tôi',
               child: const Icon(Icons.my_location),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationDeniedBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFFB74D)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.location_off, color: Color(0xFFE65100), size: 20),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Chưa có quyền truy cập vị trí GPS',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFE65100),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Ứng dụng đang hiển thị bản đồ mặc định tại Hà Nội. Vui lòng cấp quyền vị trí để tìm kiếm tiệm sửa xe và cây xăng quanh bạn.',
+            style: TextStyle(fontSize: 12.5, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 36),
+                  backgroundColor: const Color(0xFFE65100),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                onPressed: () => unawaited(Geolocator.openAppSettings()),
+                icon: const Icon(Icons.settings, size: 16),
+                label: const Text('Cấp quyền vị trí'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                onPressed: _initLocationAndShops,
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Thử lại'),
+              ),
+            ],
           ),
         ],
       ),

@@ -56,7 +56,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
         return;
       }
       setState(() {
-        // Giữ lại khoảng cách distanceM đã tính từ RPC tìm quanh đây.
+        // Giữ lại khoảng cách distanceM và tên chủ tiệm đã có từ RPC tìm quanh đây.
         _shop = Shop(
           id: updated.id,
           ownerId: updated.ownerId,
@@ -76,6 +76,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
           rejectionReason: updated.rejectionReason,
           createdAt: updated.createdAt,
           distanceM: _shop.distanceM,
+          ownerName: updated.ownerName ?? _shop.ownerName,
         );
       });
     } catch (_) {}
@@ -259,37 +260,55 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                   ),
 
                   const SizedBox(height: 12),
-                  // Thông tin chi tiết
-                  _buildInfoRow(
-                    icon: Icons.location_on,
-                    text: _shop.address,
-                    color: Colors.redAccent,
-                  ),
-                  const SizedBox(height: 8),
-                  _buildInfoRow(
-                    icon: Icons.access_time,
-                    text:
-                        'Giờ mở cửa: ${_formatClock(_shop.openTime)} - ${_formatClock(_shop.closeTime)}',
-                    color: Colors.blue,
-                  ),
-                  const SizedBox(height: 8),
-                  _buildInfoRow(
-                    icon: Icons.phone,
-                    text: 'Hotline: ${_shop.phone}',
-                    color: Colors.green,
-                  ),
-
-                  if (_shop.distanceM != null) ...[
-                    const SizedBox(height: 8),
-                    _buildInfoRow(
-                      icon: Icons.straighten,
-                      text:
-                          'Khoảng cách: ${NavigationHelper.formatDistance(_shop.distanceM!)}',
-                      color: Colors.indigo,
+                  // Thông tin chi tiết trong thẻ sáng dễ đọc
+                  Card(
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          if (_shop.ownerName != null &&
+                              _shop.ownerName!.trim().isNotEmpty) ...[
+                            _buildInfoRow(
+                              icon: Icons.person_outline,
+                              text: 'Chủ tiệm: ${_shop.ownerName!.trim()}',
+                              color: Colors.teal,
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          _buildInfoRow(
+                            icon: Icons.location_on,
+                            text: _shop.address,
+                            color: Colors.redAccent,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildInfoRow(
+                            icon: Icons.access_time,
+                            text:
+                                'Giờ mở cửa: ${_formatClock(_shop.openTime)} - ${_formatClock(_shop.closeTime)}',
+                            color: Colors.blue,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildInfoRow(
+                            icon: Icons.phone,
+                            text: 'Hotline: ${_shop.phone}',
+                            color: Colors.green,
+                          ),
+                          if (_shop.distanceM != null) ...[
+                            const SizedBox(height: 10),
+                            _buildInfoRow(
+                              icon: Icons.straighten,
+                              text:
+                                  'Khoảng cách: ${NavigationHelper.formatDistance(_shop.distanceM!)}',
+                              color: Colors.indigo,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
 
-                  const Divider(height: 32),
+                  const SizedBox(height: 18),
 
                   // 4 Nút hành động nhanh
                   _buildActionButtons(),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// Bộ lọc tìm kiếm và bán kính tiệm sửa xe & cây xăng (UC-03).
+import '../shop_filter.dart';
+
+/// Bộ lọc tìm kiếm, bán kính và sắp xếp tiệm sửa xe & cây xăng (UC-03).
 class ShopFilterBar extends StatefulWidget {
   const ShopFilterBar({
     super.key,
@@ -12,17 +14,21 @@ class ShopFilterBar extends StatefulWidget {
     required this.onCategoryChanged,
     required this.onRadiusChanged,
     required this.onOpenOnlyChanged,
+    this.selectedSort = ShopSort.nearest,
+    this.onSortChanged,
   });
 
   final String searchQuery;
   final String? selectedCategory; // null = Tất cả, 'repair_shop', 'gas_station'
   final int selectedRadiusMeters;
   final bool isOpenOnly;
+  final ShopSort selectedSort;
 
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<String?> onCategoryChanged;
   final ValueChanged<int> onRadiusChanged;
   final ValueChanged<bool> onOpenOnlyChanged;
+  final ValueChanged<ShopSort>? onSortChanged;
 
   @override
   State<ShopFilterBar> createState() => _ShopFilterBarState();
@@ -66,12 +72,12 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Ô tìm kiếm theo tên hoặc đường
+          // Ô tìm kiếm theo tên tiệm, chủ tiệm hoặc đường
           TextField(
             controller: _controller,
             onChanged: widget.onSearchChanged,
             decoration: InputDecoration(
-              hintText: 'Tìm tiệm sửa xe, cây xăng, tên đường...',
+              hintText: 'Tìm tên tiệm, chủ tiệm, tên đường...',
               hintStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
               prefixIcon: const Icon(Icons.search, size: 20),
               suffixIcon: widget.searchQuery.isNotEmpty
@@ -97,7 +103,7 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
             ),
           ),
           const SizedBox(height: 6),
-          // Hàng lọc danh mục & Trạng thái mở cửa
+          // Hàng lọc danh mục, bán kính, trạng thái mở cửa & sắp xếp
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -158,6 +164,22 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
                   onSelected: widget.onOpenOnlyChanged,
                   visualDensity: VisualDensity.compact,
                 ),
+                if (widget.onSortChanged != null) ...[
+                  const SizedBox(width: 8),
+                  Container(height: 18, width: 1, color: Colors.grey[300]),
+                  const SizedBox(width: 8),
+                  _buildSortChip(
+                    label: 'Gần nhất',
+                    sort: ShopSort.nearest,
+                    icon: Icons.near_me,
+                  ),
+                  const SizedBox(width: 6),
+                  _buildSortChip(
+                    label: 'Đánh giá cao',
+                    sort: ShopSort.highestRated,
+                    icon: Icons.star_rounded,
+                  ),
+                ],
               ],
             ),
           ),
@@ -185,6 +207,33 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
       selected: isSelected,
       onSelected: (_) => widget.onCategoryChanged(category),
       selectedColor: const Color(0xFF1E88E5),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  Widget _buildSortChip({
+    required String label,
+    required ShopSort sort,
+    required IconData icon,
+  }) {
+    final isSelected = widget.selectedSort == sort;
+    return ChoiceChip(
+      avatar: Icon(
+        icon,
+        size: 16,
+        color: isSelected ? Colors.white : Colors.amber[800],
+      ),
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          color: isSelected ? Colors.white : Colors.black87,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      selected: isSelected,
+      onSelected: (_) => widget.onSortChanged?.call(sort),
+      selectedColor: const Color(0xFF1565C0),
       visualDensity: VisualDensity.compact,
     );
   }

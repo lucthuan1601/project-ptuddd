@@ -9,32 +9,45 @@ class ReviewListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rawName = review.riderName?.trim() ?? '';
+    final displayName = rawName.isNotEmpty ? rawName : 'Khách hàng';
+    final initial = rawName.isNotEmpty ? rawName.substring(0, 1).toUpperCase() : null;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const CircleAvatar(
-                radius: 14,
-                backgroundColor: Color(0xFFE0E0E0),
-                child: Icon(Icons.person, size: 16, color: Colors.grey),
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: const Color(0xFFE3F2FD),
+                child: initial != null
+                    ? Text(
+                        initial,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: Color(0xFF1565C0),
+                        ),
+                      )
+                    : const Icon(Icons.person, size: 17, color: Color(0xFF1565C0)),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Khách hàng ẩn danh',
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  displayName,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
                 ),
               ),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: List.generate(5, (index) {
                   return Icon(
-                    index < review.rating ? Icons.star : Icons.star_border,
-                    size: 16,
-                    color: Colors.amber,
+                    index < review.rating ? Icons.star_rounded : Icons.star_border_rounded,
+                    size: 17,
+                    color: Colors.amber[700],
                   );
                 }),
               ),
@@ -43,17 +56,17 @@ class ReviewListItem extends StatelessWidget {
           if (review.comment != null && review.comment!.isNotEmpty) ...[
             const SizedBox(height: 6),
             Padding(
-              padding: const EdgeInsets.only(left: 36),
+              padding: const EdgeInsets.only(left: 42),
               child: Text(
                 review.comment!,
-                style: TextStyle(color: Colors.grey[800], fontSize: 13.5),
+                style: TextStyle(color: Colors.grey[800], fontSize: 13.5, height: 1.35),
               ),
             ),
           ],
           if (review.createdAt != null) ...[
             const SizedBox(height: 4),
             Padding(
-              padding: const EdgeInsets.only(left: 36),
+              padding: const EdgeInsets.only(left: 42),
               child: Text(
                 _formatDate(review.createdAt!),
                 style: TextStyle(color: Colors.grey[500], fontSize: 11),
