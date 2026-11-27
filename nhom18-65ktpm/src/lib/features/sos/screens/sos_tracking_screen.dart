@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../models/sos_request.dart';
@@ -7,6 +9,7 @@ import '../../../repositories/sos_repository.dart';
 import '../../review/widgets/review_form.dart';
 import '../data/supabase_sos_repository.dart';
 import '../sos_actions.dart';
+import '../sos_rules.dart';
 
 /// UC-07 (bước 6): rider theo dõi ca SOS realtime cho tới khi có người nhận / hoàn thành.
 class SosTrackingScreen extends StatefulWidget {
@@ -23,10 +26,37 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
   late Stream<SosRequest?> _stream = _repo.watchById(widget.sosId);
 
   Future<SosContact>? _contact;
+  Timer? _timeout;
   bool _cancelling = false;
+  bool _timedOut = false;
+
+  @override
+  void dispose() {
+    _timeout?.cancel();
+    super.dispose();
+  }
 
   void _retry() {
     setState(() => _stream = _repo.watchById(widget.sosId));
+  }
+
+  /// UC-07 E2: hẹn giờ tự hủy theo created_at của ca
+  /// (máy chủ cũng không cho nhận ca quá hạn).
+  void _scheduleTimeout(SosRequest sos) {
+    if (_timeout != null || _timedOut) return;
+    _timeout = Timer(sosTimeLeft(sos.createdAt?.toLocal()), () => _expire(sos));
+  }
+
+  Future<void> _expire(SosRequest sos) async {
+    // Đặt cờ trước để realtime báo cancelled thì hiện ngay màn hết thời gian.
+    _timedOut = true;
+    try {
+      await _repo.cancel(sos.id);
+    } on AppException {
+      // Vừa có người nhận hoặc ca đã hủy: luồng realtime sẽ hiện đúng trạng thái.
+      _timedOut = false;
+      return;
+    }
   }
 
   Future<void> _review(String shopId) async {
@@ -108,8 +138,10 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
 
             switch (sos.status) {
               case 'pending':
+                _scheduleTimeout(sos);
                 return _Waiting(cancelling: _cancelling, onCancel: _cancel);
               case 'accepted':
+                _timeout?.cancel();
                 _contact ??= _repo.contact(sos.id);
                 return _Accepted(contact: _contact!);
               case 'completed':
@@ -127,6 +159,15 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
                         ),
                 );
               default:
+                _timeout?.cancel();
+                if (_timedOut) {
+                  return _Message(
+                    icon: Icons.timer_off,
+                    text:
+                        'Chưa có ai tiếp nhận sau ${sosTimeout.inMinutes} phút nên yêu cầu đã tự hủy. '
+                        'Bạn hãy gọi trực tiếp cho tiệm gần nhất hoặc gửi lại yêu cầu SOS.',
+                  );
+                }
                 return const _Message(
                   icon: Icons.cancel_outlined,
                   text: 'Bạn đã hủy yêu cầu cứu hộ này.',
@@ -206,6 +247,12 @@ class _WaitingState extends State<_Waiting>
               'Đã gửi tín hiệu tới các tiệm và tình nguyện viên ở gần. '
               'Màn hình sẽ tự cập nhật khi có người tiếp nhận.',
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Yêu cầu tự hủy sau ${sosTimeout.inMinutes} phút nếu chưa có người nhận.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 24),
             OutlinedButton(
