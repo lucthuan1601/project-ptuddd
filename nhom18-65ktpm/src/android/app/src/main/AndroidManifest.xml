@@ -12,6 +12,10 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="YOUR_GOOGLE_MAPS_API_KEY"/>
+        <!-- FCM: thong bao SOS dung kenh tao trong MainActivity -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="sos_alerts"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"

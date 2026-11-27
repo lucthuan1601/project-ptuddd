@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -8,13 +10,15 @@ import '../../features/call/call_helper.dart';
 import '../../features/map/location_service.dart';
 import '../../features/navigation/screens/navigation_screen.dart';
 import '../../features/shop/screens/shop_detail_screen.dart';
+import '../../features/shop/shop_filter.dart';
 import '../../features/shop/widgets/shop_carousel.dart';
 import '../../features/shop/widgets/shop_filter_bar.dart';
+import '../../features/sos/screens/sos_request_screen.dart';
 import '../../models/shop.dart';
 import '../../repositories/auth_repository.dart';
 import '../../repositories/shop_repository.dart';
 
-/// Màn hình chính phân hệ Khách hàng (Rider), tích hợp toàn bộ UC-02 đến UC-06.
+/// Màn hình chính phân hệ Khách hàng (Rider), tích hợp UC-02 → UC-08.
 class RiderShell extends StatefulWidget {
   const RiderShell({super.key});
 
@@ -51,62 +55,78 @@ class _RiderShellState extends State<RiderShell> {
 
   @override
   void dispose() {
-    _shopsSubscription?.unsubscribe();
+    final channel = _shopsSubscription;
+    if (channel != null) {
+      unawaited(supabase.removeChannel(channel));
+    }
+    _mapController?.dispose();
     super.dispose();
   }
 
-  /// Lắng nghe thay đổi trạng thái đóng/mở cửa của tiệm theo thời gian thực (Supabase Realtime)
+  /// Lắng nghe thay đổi trạng thái đóng/mở cửa của tiệm theo thời gian thực (Supabase Realtime).
   void _subscribeToShopsRealtime() {
     _shopsSubscription = supabase
-        .channel('public:shops')
+        .channel('public:shops-${DateTime.now().microsecondsSinceEpoch}')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'shops',
-          callback: (payload) {
+          callback: (_) {
             _fetchNearbyShops(showLoading: false);
           },
         )
         .subscribe();
   }
 
-  /// UC-02: Định vị GPS hiện tại và tải danh sách tiệm ban đầu
+  /// UC-02: Định vị GPS hiện tại và tải danh sách tiệm ban đầu.
   Future<void> _initLocationAndShops() async {
     setState(() => _isLoadingLocation = true);
 
     final res = await LocationService.getCurrentLocation();
 
-    if (mounted) {
-      setState(() {
-        _isLoadingLocation = false;
-        if (res.position != null) {
-          _currentLocation = res.position!;
-        }
-        _currentAddress = res.address ??
-            (res.position != null
-                ? 'Tọa độ: ${res.position!.latitude.toStringAsFixed(4)}, ${res.position!.longitude.toStringAsFixed(4)}'
-                : 'Hà Nội');
-      });
-
-      if (res.isGpsDisabled) {
-        _showGpsDisabledDialog();
-      } else if (res.isPermissionDenied) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Ứng dụng không có quyền GPS. Đang hiển thị vị trí mặc định tại Hà Nội.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+    if (!mounted) return;
+    setState(() {
+      _isLoadingLocation = false;
+      if (res.position != null) {
+        _currentLocation = res.position!;
       }
+      _currentAddress = res.address ??
+          (res.position != null
+              ? 'Tọa độ: ${res.position!.latitude.toStringAsFixed(4)}, ${res.position!.longitude.toStringAsFixed(4)}'
+              : 'Hà Nội');
+    });
 
-      _animateCameraTo(_currentLocation);
-      await _fetchNearbyShops();
+    if (res.isGpsDisabled) {
+      _showGpsDisabledDialog();
+    } else if (res.isPermissionDenied) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Ứng dụng không có quyền GPS. Đang hiển thị vị trí mặc định tại Hà Nội.',
+          ),
+          backgroundColor: Colors.orange,
+          action: SnackBarAction(
+            label: 'Cài đặt',
+            textColor: Colors.white,
+            onPressed: () => unawaited(Geolocator.openAppSettings()),
+          ),
+        ),
+      );
+    } else if (res.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.errorMessage!),
+          backgroundColor: Colors.orange,
+        ),
+      );
     }
+
+    _animateCameraTo(_currentLocation);
+    await _fetchNearbyShops();
   }
 
   void _showGpsDisabledDialog() {
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Dịch vụ vị trí bị tắt'),
@@ -117,6 +137,13 @@ class _RiderShellState extends State<RiderShell> {
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('Bỏ qua'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              unawaited(Geolocator.openLocationSettings());
+            },
+            child: const Text('Mở cài đặt'),
           ),
           ElevatedButton(
             onPressed: () {
@@ -138,7 +165,7 @@ class _RiderShellState extends State<RiderShell> {
     );
   }
 
-  /// UC-03: Tải danh sách tiệm trong bán kính qua RPC PostGIS
+  /// UC-03: Tải danh sách tiệm trong bán kính qua RPC PostGIS.
   Future<void> _fetchNearbyShops({bool showLoading = true}) async {
     if (showLoading) {
       setState(() => _isLoadingShops = true);
@@ -177,15 +204,7 @@ class _RiderShellState extends State<RiderShell> {
     }
   }
 
-  /// Lọc thêm theo từ khóa tìm kiếm (tên tiệm / tên đường)
-  List<Shop> get _filteredShops {
-    if (_searchQuery.trim().isEmpty) return _shops;
-    final query = _searchQuery.toLowerCase().trim();
-    return _shops.where((s) {
-      return s.name.toLowerCase().contains(query) ||
-          s.address.toLowerCase().contains(query);
-    }).toList();
-  }
+  List<Shop> get _filteredShops => filterShops(_shops, _searchQuery);
 
   Set<Marker> _buildMarkers() {
     final markers = <Marker>{};
@@ -259,97 +278,10 @@ class _RiderShellState extends State<RiderShell> {
     );
   }
 
-  /// Nút SOS khẩn cấp (UC-07 của bạn Tùng)
-  void _openEmergencySosDialog() {
-    String selectedIssue = 'Thủng lốp';
-    final noteController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Row(
-            children: const [
-              Icon(Icons.warning, color: Colors.red),
-              SizedBox(width: 8),
-              Text('Gửi Tín Hiệu SOS Khẩn Cấp'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Chọn loại sự cố gặp phải:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedIssue,
-                  items: const [
-                    DropdownMenuItem(value: 'Thủng lốp', child: Text('Thủng lốp / Hết hơi')),
-                    DropdownMenuItem(value: 'Hết xăng', child: Text('Hết xăng giữa đường')),
-                    DropdownMenuItem(value: 'Hỏng động cơ', child: Text('Hỏng máy / Chết máy')),
-                    DropdownMenuItem(value: 'Khác', child: Text('Sự cố khác')),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => selectedIssue = val);
-                  },
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Mô tả thêm tình trạng:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: noteController,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    hintText: 'Ví dụ: Đang dừng ở ngã tư Giải Phóng...',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Tọa độ GPS sẽ tự động đính kèm: ${_currentLocation.latitude.toStringAsFixed(4)}, ${_currentLocation.longitude.toStringAsFixed(4)}',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Hủy'),
-            ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        'Đã phát tín hiệu cứu hộ SOS! Đang tìm tiệm và tình nguyện viên gần nhất.'),
-                    backgroundColor: Colors.redAccent,
-                    duration: Duration(seconds: 4),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.emergency),
-              label: const Text('Phát tín hiệu cứu hộ'),
-            ),
-          ],
-        ),
-      ),
+  /// UC-07: mở màn hình gửi/theo dõi tín hiệu SOS thực tế.
+  void _openSosScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SosRequestScreen()),
     );
   }
 
@@ -483,9 +415,9 @@ class _RiderShellState extends State<RiderShell> {
                       ),
                     ],
                   ),
-                  child: Row(
+                  child: const Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: const [
+                    children: [
                       SizedBox(
                         width: 14,
                         height: 14,
@@ -503,7 +435,7 @@ class _RiderShellState extends State<RiderShell> {
           Positioned(
             left: 0,
             right: 0,
-            bottom: 24,
+            bottom: 20,
             child: ShopCarousel(
               shops: _filteredShops,
               selectedShopId: _selectedShopId,
@@ -521,7 +453,24 @@ class _RiderShellState extends State<RiderShell> {
             ),
           ),
 
-          // 5. Nút định vị GPS "Vị trí của tôi"
+          // 5. Nút SOS khẩn cấp đặt phía trên carousel, không che thẻ tiệm
+          Positioned(
+            left: 16,
+            bottom: 176,
+            child: FloatingActionButton.extended(
+              heroTag: 'sos_fab',
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+              onPressed: _openSosScreen,
+              icon: const Icon(Icons.sos),
+              label: const Text(
+                'CỨU HỘ SOS',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+
+          // 6. Nút định vị GPS "Vị trí của tôi"
           Positioned(
             right: 16,
             bottom: 180,
@@ -536,20 +485,6 @@ class _RiderShellState extends State<RiderShell> {
           ),
         ],
       ),
-
-      // 6. Nút SOS khẩn cấp nổi bật
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'sos_fab',
-        backgroundColor: Colors.red[600],
-        foregroundColor: Colors.white,
-        onPressed: _openEmergencySosDialog,
-        icon: const Icon(Icons.emergency, size: 24),
-        label: const Text(
-          '🚨 CỨU HỘ SOS',
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }

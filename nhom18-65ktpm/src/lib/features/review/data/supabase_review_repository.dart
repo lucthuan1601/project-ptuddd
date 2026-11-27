@@ -1,20 +1,45 @@
 import '../../../core/supabase_client.dart';
+import '../../../core/supabase_errors.dart';
 import '../../../models/review.dart';
+import '../../../repositories/auth_repository.dart';
 import '../../../repositories/review_repository.dart';
+import '../review_rules.dart';
 
-/// Triển khai ReviewRepository qua Supabase REST API (UC-04 & UC-08).
+/// UC-08. rating / review_count của tiệm do trigger `refresh_shop_rating` tự tính lại.
 class SupabaseReviewRepository implements ReviewRepository {
-  @override
-  Future<List<Review>> listByShop(String shopId) async {
-    final res = await supabase
-        .from('reviews')
-        .select()
-        .eq('shop_id', shopId)
-        .order('created_at', ascending: false);
+  String get _uid {
+    final id = supabase.auth.currentUser?.id;
+    if (id == null) {
+      throw const AppException(
+        'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.',
+      );
+    }
+    return id;
+  }
 
-    return (res as List)
-        .map((e) => Review.fromMap(Map<String, dynamic>.from(e as Map)))
-        .toList();
+  @override
+  Future<List<Review>> listByShop(String shopId) {
+    return guardSupabase(() async {
+      final rows = await supabase
+          .from('reviews')
+          .select()
+          .eq('shop_id', shopId)
+          .order('created_at', ascending: false);
+      return rows.map(Review.fromMap).toList();
+    });
+  }
+
+  /// Đánh giá cũ của rider cho tiệm (để sửa lại), null nếu chưa có.
+  Future<Review?> myReview(String shopId) {
+    return guardSupabase(() async {
+      final row = await supabase
+          .from('reviews')
+          .select()
+          .eq('shop_id', shopId)
+          .eq('rider_id', _uid)
+          .maybeSingle();
+      return row == null ? null : Review.fromMap(row);
+    });
   }
 
   @override
@@ -22,26 +47,24 @@ class SupabaseReviewRepository implements ReviewRepository {
     required String shopId,
     required int rating,
     String? comment,
-  }) async {
-    final riderId = supabase.auth.currentUser?.id;
-    if (riderId == null) {
-      throw StateError('Bạn cần đăng nhập để gửi đánh giá.');
-    }
+  }) {
+    final error = validateRating(rating) ?? validateReviewComment(comment);
+    if (error != null) throw AppException(error);
 
-    final trimmed = comment?.trim();
-    final data = {
-      'shop_id': shopId,
-      'rider_id': riderId,
-      'rating': rating,
-      'comment': (trimmed == null || trimmed.isEmpty) ? null : trimmed,
-    };
-
-    final res = await supabase
-        .from('reviews')
-        .upsert(data, onConflict: 'shop_id,rider_id')
-        .select()
-        .single();
-
-    return Review.fromMap(Map<String, dynamic>.from(res));
+    return guardSupabase(() async {
+      final text = comment?.trim() ?? '';
+      // Mỗi rider một đánh giá / tiệm (unique shop_id, rider_id): gửi lại thì cập nhật.
+      final row = await supabase
+          .from('reviews')
+          .upsert({
+            'shop_id': shopId,
+            'rider_id': _uid,
+            'rating': rating,
+            'comment': text.isEmpty ? null : text,
+          }, onConflict: 'shop_id,rider_id')
+          .select()
+          .single();
+      return Review.fromMap(row);
+    });
   }
 }

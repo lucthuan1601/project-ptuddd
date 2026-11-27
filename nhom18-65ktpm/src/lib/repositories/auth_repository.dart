@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/push_service.dart';
 import '../core/supabase_client.dart';
 import '../models/user.dart';
 
@@ -92,7 +93,10 @@ class AuthRepository {
     }
   }
 
-  Future<void> signOut() => supabase.auth.signOut();
+  Future<void> signOut() async {
+    await PushService.unregister();
+    await supabase.auth.signOut();
+  }
 
   String _authMessage(AuthException e) {
     switch (e.code) {

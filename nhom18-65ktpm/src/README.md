@@ -145,12 +145,12 @@ Toàn bộ phân công dưới đây được xây dựng trực tiếp từ tà
 
 ### 1.4. Trạng thái bàn giao hiện tại
 
-- **Đã có sẵn (nền tảng do Thuận dựng):**
-  - Schema 5 bảng (`users`, `shops`, `sos_requests`, `reviews`, `volunteer_profiles`), RLS, RPC PostGIS, Storage và dữ liệu seed trong [`../supabase/`](../supabase/README.md).
-  - 5 model (`lib/models/`) kèm unit test và 5 hợp đồng repository (`lib/repositories/`).
-  - **UC-01:** Đăng nhập, đăng ký, chặn tài khoản `banned`, tự động điều hướng theo vai trò (`AuthGate`).
-  - 4 màn hình khung rỗng (`lib/core/shells/`) để từng thành viên lắp ghép giao diện của mình.
-- **Cần triển khai theo phân công Mục 1.3:** Toàn bộ màn hình & nghiệp vụ của Quân (`UC-02 → UC-06`), Tùng (`UC-07, 08, 11 TNV, 12, 13` + FCM), Hiếu (`UC-09, 10, 11 Chủ tiệm, 14, 15`) và hoàn thiện tích hợp Firebase/nối luồng bởi Thuận.
+- **Đã tích hợp đủ cả 4 phân hệ trên nhánh `nhom/nhom18-65ktpm`:**
+  - **Nền tảng & UC-01 (Thuận):** Schema 5 bảng (`users`, `shops`, `sos_requests`, `reviews`, `volunteer_profiles`), RLS (`is_active_user`, `is_admin`), Trigger `security invoker`, RPC PostGIS + `admin_set_user_status`, Storage, Realtime (`shops`, `sos_requests`), 5 model + unit test, `AuthGate` điều hướng theo vai trò + onboarding tự động cho `owner` (UC-09) / `volunteer` (UC-13) + đăng ký FCM tập trung.
+  - **Phân hệ Khách hàng (Quân — UC-02 → UC-06):** `RiderShell` (bản đồ GPS, Reverse Geocoding, lọc/tìm kiếm, Realtime trạng thái tiệm), `ShopDetailScreen` (gắn nút SOS UC-07 & Đánh giá UC-08), `CallHelper`, `NavigationScreen`.
+  - **Luồng SOS, Đánh giá & Tình nguyện viên (Tùng — UC-07, 08, 11 TNV, 12, 13 + FCM):** `SosRequestScreen`, `SosTrackingScreen` (realtime + timeout 5 phút + hotline dự phòng), `showReviewSheet`, `SosInbox` (pop-up khẩn cấp + tự thu nhỏ 60s + khôi phục ca đang xử lý), `ActiveCaseScreen`, `VolunteerShell`, `VolunteerProfileScreen`, `PushService`, Edge Function `notify-sos` và `06_sos_volunteer.sql`.
+  - **Phân hệ Chủ tiệm & Quản trị (Hiếu — UC-09, 10, 11 Chủ tiệm, 14, 15):** `OwnerShell` (quản lý tiệm + tích hợp `SosInbox`), `ShopEditorScreen`, `ShopLocationPicker`, `ShopOpenStatusCard`, `AdminShell` (`AdminManagementScreen` có nhập lý do từ chối + lọc/tìm kiếm + khóa đồng bộ, `AdminStatisticsScreen` + xuất CSV).
+- **Còn cần cấu hình khi chạy demo thật:** chạy `01` → `06` SQL trên Supabase chung, điền `FIREBASE_*` vào `env.json` cục bộ & deploy Edge Function `notify-sos` + Webhook, thay Google Maps API key cục bộ trong `AndroidManifest.xml`, kiểm thử 15 UC trên Android và đồng bộ báo cáo Word trước khi mở PR nộp bài.
 
 ---
 
