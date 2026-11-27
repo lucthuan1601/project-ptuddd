@@ -26,5 +26,35 @@ void main() {
       final mins = NavigationHelper.estimateMotorbikeMinutes(5000);
       expect(mins, inInclusiveRange(12, 16));
     });
+
+    test('parseOsrmRoute giải mã GeoJSON hợp lệ và xử lý dữ liệu lỗi', () {
+      final route = NavigationHelper.parseOsrmRoute({
+        'routes': [
+          {
+            'distance': 2450.5,
+            'duration': 310,
+            'geometry': {
+              'type': 'LineString',
+              'coordinates': [
+                [105.8542, 21.0285],
+                [105.8600, 21.0310],
+                [105.8650, 21.0350],
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(route, isNotNull);
+      expect(route!.isRoadRoute, isTrue);
+      expect(route.points.length, 3);
+      expect(route.points.first.latitude, closeTo(21.0285, 1e-6));
+      expect(route.points.first.longitude, closeTo(105.8542, 1e-6));
+      expect(route.distanceMeters, closeTo(2450.5, 1e-3));
+      expect(route.durationMinutes, 6);
+
+      expect(NavigationHelper.parseOsrmRoute({'routes': []}), isNull);
+      expect(NavigationHelper.parseOsrmRoute({}), isNull);
+    });
   });
 }

@@ -21,6 +21,7 @@ void main() {
         reviewCount: 25,
         status: 'approved',
         distanceM: 350,
+        ownerName: 'Nguyễn Văn Hùng',
       ),
       const Shop(
         id: '2',
@@ -38,6 +39,7 @@ void main() {
         reviewCount: 10,
         status: 'approved',
         distanceM: 1200,
+        ownerName: 'Trần Thị Mai',
       ),
       const Shop(
         id: '3',
@@ -55,10 +57,11 @@ void main() {
         reviewCount: 40,
         status: 'approved',
         distanceM: 2800,
+        ownerName: 'Lê Minh Tuấn',
       ),
     ];
 
-    test('Lọc theo từ khóa tìm kiếm tên tiệm hoặc địa chỉ', () {
+    test('Lọc theo từ khóa tên tiệm, địa chỉ hoặc tên chủ tiệm', () {
       final byName = filterShops(sampleShops, 'Honda');
       expect(byName.length, 1);
       expect(byName.first.id, '1');
@@ -67,7 +70,21 @@ void main() {
       expect(byAddress.length, 1);
       expect(byAddress.first.id, '2');
 
+      final byOwner = filterShops(sampleShops, 'minh tuấn');
+      expect(byOwner.length, 1);
+      expect(byOwner.first.id, '3');
+
       expect(filterShops(sampleShops, '   ').length, 3);
+    });
+
+    test('Sắp xếp theo khoảng cách gần nhất và đánh giá cao nhất', () {
+      final shuffled = [sampleShops[2], sampleShops[0], sampleShops[1]];
+
+      final nearest = sortShops(shuffled, ShopSort.nearest);
+      expect(nearest.map((s) => s.id).toList(), ['1', '2', '3']);
+
+      final highestRated = sortShops(shuffled, ShopSort.highestRated);
+      expect(highestRated.map((s) => s.id).toList(), ['3', '1', '2']);
     });
 
     test('Lọc theo danh mục tiệm sửa xe hoặc cây xăng', () {

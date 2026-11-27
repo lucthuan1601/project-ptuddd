@@ -14,19 +14,22 @@ void main() {
       'phone': '0912345678',
       'role': 'admin',
       'status': 'banned',
+      'ban_reason': 'Vi phạm quy định cộng đồng',
       'created_at': '2026-01-02T03:04:05Z',
     });
 
     expect(user.fullName, 'Lục Văn Thuận');
     expect(user.role, 'admin');
     expect(user.isBanned, isTrue);
+    expect(user.banReason, 'Vi phạm quy định cộng đồng');
     expect(user.createdAt, isNotNull);
   });
 
-  test('Shop.fromMap đọc distance_m từ RPC', () {
+  test('Shop.fromMap đọc distance_m và owner_name từ RPC', () {
     final shop = Shop.fromMap({
       'id': 's1',
       'owner_id': 'u2',
+      'owner_name': 'Nguyễn Văn A',
       'name': 'Sửa xe A',
       'category': 'repair_shop',
       'phone': '0900000000',
@@ -46,6 +49,7 @@ void main() {
     expect(shop.rating, 4.0);
     expect(shop.reviewCount, 2);
     expect(shop.distanceM, 1234.5);
+    expect(shop.ownerName, 'Nguyễn Văn A');
     expect(shop.isOpen, isTrue);
     expect(shop.rejectionReason, 'Địa chỉ chưa rõ ràng');
   });
@@ -85,16 +89,18 @@ void main() {
     expect(profile.rejectionReason, 'Ảnh giấy tờ bị mờ');
   });
 
-  test('Review.fromMap giữ rating và comment', () {
+  test('Review.fromMap giữ rating, comment và rider_name', () {
     final review = Review.fromMap({
       'id': 'r1',
       'shop_id': 's1',
       'rider_id': 'u1',
+      'rider_name': 'Trần Thị B',
       'rating': 5,
       'comment': 'Tốt',
     });
 
     expect(review.rating, 5);
     expect(review.comment, 'Tốt');
+    expect(review.riderName, 'Trần Thị B');
   });
 }
