@@ -101,6 +101,18 @@ class AuthRepository {
     }
   }
 
+  Future<void> resetPassword(String email) async {
+    try {
+      await supabase.auth.resetPasswordForEmail(email.trim());
+    } on AuthException catch (e) {
+      throw AppException(_authMessage(e));
+    } catch (_) {
+      throw const AppException(
+        'Không kết nối được máy chủ. Kiểm tra mạng và thử lại.',
+      );
+    }
+  }
+
   Future<void> signOut() async {
     await PushService.unregister();
     await supabase.auth.signOut();
