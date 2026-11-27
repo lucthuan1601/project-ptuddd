@@ -351,3 +351,25 @@ $$;
 
 revoke all on function public.get_sos_recipients(uuid) from public, anon, authenticated;
 grant execute on function public.get_sos_recipients(uuid) to service_role;
+
+-- ============================================================
+-- 7. UC-07 E1: rider biết quanh mình có ai nhận được ca không
+-- Chỉ chủ ca gọi được; ca của người khác trả 0.
+-- ============================================================
+create or replace function public.count_sos_helpers(p_sos_id uuid)
+returns integer
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  select count(*)::integer
+    from public.sos_helpers(p_sos_id)
+   where exists (
+     select 1 from public.sos_requests
+      where id = p_sos_id and rider_id = auth.uid()
+   );
+$$;
+
+revoke all on function public.count_sos_helpers(uuid) from public, anon;
+grant execute on function public.count_sos_helpers(uuid) to authenticated;
