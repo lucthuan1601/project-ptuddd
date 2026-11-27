@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,9 +12,18 @@ import '../data/shop_location_rules.dart';
 import 'shop_location_picker.dart';
 
 class ShopEditorScreen extends StatefulWidget {
-  const ShopEditorScreen({super.key, this.shop});
+  const ShopEditorScreen({
+    super.key,
+    this.shop,
+    this.onSaved,
+    this.showLogout = false,
+  });
 
   final Shop? shop;
+
+  /// Callback dùng khi mở trực tiếp từ AuthGate onboarding (không có route trước).
+  final VoidCallback? onSaved;
+  final bool showLogout;
 
   @override
   State<ShopEditorScreen> createState() => _ShopEditorScreenState();
@@ -35,6 +46,7 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
   late TimeOfDay _closeTime;
   bool _saving = false;
   XFile? _image;
+  Uint8List? _imageBytes;
 
   @override
   void initState() {
@@ -100,20 +112,29 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
     });
   }
 
-  Future<void> _selectImage() async {
+  Future<void> _selectImage(ImageSource source) async {
     if (_saving) return;
     try {
-      final file = await _picker.pickImage(source: ImageSource.gallery);
+      final file = await _picker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
       if (file == null || !mounted) return;
       final extension = file.name.split('.').last.toLowerCase();
       if (!{'jpg', 'jpeg', 'png'}.contains(extension)) {
         throw const AppException('Chỉ chấp nhận ảnh JPG hoặc PNG.');
       }
-      final size = await file.length();
-      if (size == 0 || size > ShopImageUploader.maxBytes) {
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty || bytes.lengthInBytes > ShopImageUploader.maxBytes) {
         throw const AppException('Ảnh phải nhỏ hơn hoặc bằng 5 MB.');
       }
-      if (mounted) setState(() => _image = file);
+      if (mounted) {
+        setState(() {
+          _image = file;
+          _imageBytes = bytes;
+        });
+      }
     } on AppException catch (e) {
       _message(e.message);
     } catch (_) {
@@ -160,10 +181,13 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
       return;
     }
     setState(() => _saving = true);
+    String? uploadedPath;
     try {
       var imageUrl = _imageUrl.text.trim();
       if (_image != null) {
-        imageUrl = await _imageUploader.upload(_image!);
+        final uploaded = await _imageUploader.uploadWithPath(_image!);
+        imageUrl = uploaded.url;
+        uploadedPath = uploaded.path;
       }
       final draft = ShopDraft(
         name: _name.text,
@@ -176,12 +200,22 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
         closeTime: _sqlTime(_closeTime),
         imageUrl: imageUrl,
       );
-      if (widget.shop == null) {
-        await _repository.create(draft);
-      } else {
-        await _repository.update(shop: widget.shop!, draft: draft);
+      try {
+        if (widget.shop == null) {
+          await _repository.create(draft);
+        } else {
+          await _repository.update(shop: widget.shop!, draft: draft);
+        }
+      } catch (_) {
+        if (uploadedPath != null) await _imageUploader.remove(uploadedPath);
+        rethrow;
       }
-      if (mounted) Navigator.of(context).pop(true);
+      if (!mounted) return;
+      if (widget.onSaved != null) {
+        widget.onSaved!();
+      } else {
+        Navigator.of(context).pop(true);
+      }
     } on AppException catch (e) {
       _message(e.message);
     } catch (_) {
@@ -198,7 +232,17 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
     final editing = widget.shop != null;
     final approved = widget.shop?.status == 'approved';
     return Scaffold(
-      appBar: AppBar(title: Text(editing ? 'Chỉnh sửa tiệm' : 'Đăng ký tiệm')),
+      appBar: AppBar(
+        title: Text(editing ? 'Chỉnh sửa tiệm' : 'Đăng ký tiệm'),
+        actions: [
+          if (widget.showLogout)
+            IconButton(
+              tooltip: 'Đăng xuất',
+              onPressed: () => AuthRepository().signOut(),
+              icon: const Icon(Icons.logout),
+            ),
+        ],
+      ),
       body: Form(
         key: _formKey,
         autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -326,22 +370,51 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _saving ? null : _selectImage,
-              icon: const Icon(Icons.image_outlined),
-              label: Text(
-                _image == null
-                    ? 'Chọn ảnh mặt tiền JPG/PNG'
-                    : 'Đã chọn: ${_image!.name}',
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _saving
+                        ? null
+                        : () => _selectImage(ImageSource.camera),
+                    icon: const Icon(Icons.photo_camera),
+                    label: const Text('Chụp ảnh'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _saving
+                        ? null
+                        : () => _selectImage(ImageSource.gallery),
+                    icon: const Icon(Icons.image_outlined),
+                    label: const Text('Chọn ảnh'),
+                  ),
+                ),
+              ],
             ),
-            if (_imageUrl.text.trim().isNotEmpty)
-              Image.network(
-                _imageUrl.text.trim(),
-                height: 120,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) =>
-                    const Text('Không hiển thị được ảnh hiện tại.'),
+            if (_imageBytes != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(
+                    _imageBytes!,
+                    height: 140,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              )
+            else if (_imageUrl.text.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Image.network(
+                  _imageUrl.text.trim(),
+                  height: 120,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) =>
+                      const Text('Không hiển thị được ảnh hiện tại.'),
+                ),
               ),
             TextFormField(
               controller: _imageUrl,

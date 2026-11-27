@@ -1,4 +1,5 @@
 import '../../../core/supabase_client.dart';
+import '../../../core/supabase_errors.dart';
 import '../../../repositories/auth_repository.dart';
 
 enum StatsPeriod { sevenDays, thirtyDays, currentMonth }
@@ -101,33 +102,42 @@ class AdminStatisticsRepository {
     }
   }
 
-  Future<AdminStatisticsSnapshot> load(StatsPeriod period) async {
-    await _requireAdmin();
-    final now = DateTime.now();
-    final start = period.startDate(now);
-    final startIso = start.toUtc().toIso8601String();
-    final endIso = now.toUtc().toIso8601String();
+  Future<AdminStatisticsSnapshot> load(StatsPeriod period) {
+    return guardSupabase(() async {
+      await _requireAdmin();
+      final now = DateTime.now();
+      final start = period.startDate(now);
+      final startIso = start.toUtc().toIso8601String();
+      final endIso = now.toUtc().toIso8601String();
 
-    final userRows = await supabase
-        .from('users')
-        .select('id,created_at')
-        .gte('created_at', startIso)
-        .lte('created_at', endIso);
-    final shopRows = await supabase
-        .from('shops')
-        .select('id,category,created_at')
-        .gte('created_at', startIso)
-        .lte('created_at', endIso);
-    final volunteerRows = await supabase
-        .from('volunteer_profiles')
-        .select('id,created_at')
-        .gte('created_at', startIso)
-        .lte('created_at', endIso);
-    final sosRows = await supabase
-        .from('sos_requests')
-        .select('id,status,created_at,accepted_shop_id,accepted_volunteer_id')
-        .gte('created_at', startIso)
-        .lte('created_at', endIso);
+      final results = await Future.wait<List<Map<String, dynamic>>>([
+        supabase
+            .from('users')
+            .select('id,created_at')
+            .gte('created_at', startIso)
+            .lte('created_at', endIso),
+        supabase
+            .from('shops')
+            .select('id,category,created_at')
+            .gte('created_at', startIso)
+            .lte('created_at', endIso),
+        supabase
+            .from('volunteer_profiles')
+            .select('id,created_at')
+            .gte('created_at', startIso)
+            .lte('created_at', endIso),
+        supabase
+            .from('sos_requests')
+            .select(
+              'id,status,created_at,accepted_shop_id,accepted_volunteer_id',
+            )
+            .gte('created_at', startIso)
+            .lte('created_at', endIso),
+      ]);
+      final userRows = results[0];
+      final shopRows = results[1];
+      final volunteerRows = results[2];
+      final sosRows = results[3];
 
     final totals = <String, int>{};
     final shops = <String, int>{};
@@ -181,5 +191,6 @@ class AdminStatisticsRepository {
           .length,
       days: days,
     );
+    });
   }
 }

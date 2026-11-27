@@ -14,7 +14,7 @@ class NavigationHelper {
     BuildContext? context,
   }) async {
     final uri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=$destinationLat,$destinationLng&travelmode=motorcycle',
+      'https://www.google.com/maps/dir/?api=1&destination=$destinationLat,$destinationLng&travelmode=driving',
     );
 
     try {

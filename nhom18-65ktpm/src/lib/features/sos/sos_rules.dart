@@ -5,6 +5,15 @@ library;
 const sosIssueTypes = ['Hết xăng', 'Thủng lốp', 'Hỏng động cơ', 'Khác'];
 
 const sosNoteMaxLength = 300;
+const sosTimeout = Duration(minutes: 5);
+const sosPopupAutoDismiss = Duration(seconds: 60);
+
+/// Danh sách hotline dự phòng khi không có tiệm/TNV quanh khu vực (UC-07).
+const emergencyHotlines = [
+  (label: 'Cảnh sát khẩn cấp (113)', phone: '113'),
+  (label: 'Cấp cứu y tế (115)', phone: '115'),
+  (label: 'Cứu hộ cứu nạn (114)', phone: '114'),
+];
 
 String? validateSosNote(String? value) {
   if ((value?.trim().length ?? 0) > sosNoteMaxLength) {

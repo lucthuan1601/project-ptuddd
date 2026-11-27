@@ -127,6 +127,35 @@ class SupabaseSosRepository implements SosRepository {
     });
   }
 
+  /// Kiểm tra nhanh có tiệm đang mở (5 km) hoặc TNV sẵn sàng nào quanh vị trí sự cố không (UC-07).
+  Future<bool> hasNearbyHelpers({
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final results = await Future.wait<dynamic>([
+        supabase.rpc(
+          'get_nearby_shops',
+          params: {
+            'p_lat': latitude,
+            'p_lng': longitude,
+            'p_radius_m': 5000,
+            'p_open_only': true,
+          },
+        ),
+        supabase.rpc(
+          'get_nearby_volunteers',
+          params: {'p_lat': latitude, 'p_lng': longitude},
+        ),
+      ]);
+      final shops = results[0] as List;
+      final volunteers = results[1] as List;
+      return shops.isNotEmpty || volunteers.isNotEmpty;
+    } catch (_) {
+      return true;
+    }
+  }
+
   /// Theo dõi realtime một ca (rider xem ca của mình, người nhận xem ca đang xử lý).
   /// Phát null nếu không còn đọc được ca.
   Stream<SosRequest?> watchById(String sosId) {

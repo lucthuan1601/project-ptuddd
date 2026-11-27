@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/location_service.dart';
 import '../../../models/sos_request.dart';
 import '../../../repositories/auth_repository.dart';
+import '../../navigation/screens/navigation_screen.dart';
 import '../data/supabase_sos_repository.dart';
 import '../sos_actions.dart';
 import '../sos_rules.dart';
@@ -88,6 +90,11 @@ class _ActiveCaseScreenState extends State<ActiveCaseScreen> {
             if (sos.status == 'completed') {
               return const _Info(text: 'Ca cứu hộ đã hoàn thành.');
             }
+            if (sos.status != 'accepted') {
+              return const _Info(
+                text: 'Ca cứu hộ này không còn ở trạng thái đang xử lý.',
+              );
+            }
             return _Detail(
               sos: sos,
               completing: _completing,
@@ -141,8 +148,28 @@ class _Detail extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: () =>
-              launchDirections(context, sos.latitude, sos.longitude),
+          onPressed: () async {
+            try {
+              final pos = await LocationService().current();
+              if (!context.mounted) return;
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => NavigationScreen(
+                    originLat: pos.latitude,
+                    originLng: pos.longitude,
+                    destinationLat: sos.latitude,
+                    destinationLng: sos.longitude,
+                    destinationTitle: 'Sự cố: ${sos.issueType}',
+                    destinationAddress: sos.note,
+                  ),
+                ),
+              );
+            } catch (_) {
+              if (context.mounted) {
+                await launchDirections(context, sos.latitude, sos.longitude);
+              }
+            }
+          },
           icon: const Icon(Icons.directions),
           label: const Text('Chỉ đường tới vị trí sự cố'),
         ),

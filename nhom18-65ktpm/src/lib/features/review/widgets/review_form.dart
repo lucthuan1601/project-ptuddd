@@ -11,6 +11,8 @@ Future<bool> showReviewSheet(
   required String shopName,
 }) async {
   final repo = SupabaseReviewRepository();
+  // Tạo Future một lần bên ngoài builder để tránh mở bàn phím làm rebuild reset form.
+  final oldReviewFuture = repo.myReview(shopId);
   final sent = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
@@ -22,7 +24,7 @@ Future<bool> showReviewSheet(
         bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
       ),
       child: FutureBuilder(
-        future: repo.myReview(shopId),
+        future: oldReviewFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const SizedBox(
@@ -30,7 +32,7 @@ Future<bool> showReviewSheet(
               child: Center(child: CircularProgressIndicator()),
             );
           }
-          final old = snapshot.data;
+          final old = snapshot.hasError ? null : snapshot.data;
           return ReviewForm(
             shopName: shopName,
             initialRating: old?.rating,

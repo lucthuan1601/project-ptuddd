@@ -116,41 +116,47 @@ async function sendToToken(
   token: string,
   sos: SosRecord,
 ): Promise<"sent" | "stale" | "failed"> {
-  const res = await fetch(
-    `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        message: {
-          token,
-          // Payload thống nhất trong src/README.md: {sos_id, issue_type, lat, lng}.
-          data: {
-            sos_id: sos.id,
-            issue_type: sos.issue_type,
-            lat: String(sos.latitude),
-            lng: String(sos.longitude),
-          },
-          notification: {
-            title: "Yêu cầu cứu hộ SOS gần bạn",
-            body: `${sos.issue_type} – mở ứng dụng để tiếp nhận`,
-          },
-          android: {
-            priority: "HIGH",
-            ttl: "600s",
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: {
+            token,
+            // Payload thống nhất trong src/README.md: {sos_id, issue_type, lat, lng}.
+            data: {
+              sos_id: sos.id,
+              issue_type: sos.issue_type,
+              lat: String(sos.latitude),
+              lng: String(sos.longitude),
+            },
             notification: {
-              channel_id: ANDROID_CHANNEL_ID,
-              sound: "default",
-              tag: sos.id,
+              title: "Yêu cầu cứu hộ SOS gần bạn",
+              body: `${sos.issue_type} – mở ứng dụng để tiếp nhận`,
+            },
+            android: {
+              priority: "HIGH",
+              ttl: "300s",
+              notification: {
+                channel_id: ANDROID_CHANNEL_ID,
+                sound: "default",
+                tag: sos.id,
+              },
             },
           },
-        },
-      }),
-    },
-  );
+        }),
+      },
+    );
+  } catch (e) {
+    console.error("FCM lỗi kết nối", String(e));
+    return "failed";
+  }
   if (res.ok) return "sent";
 
   const body = await res.json().catch(() => null);

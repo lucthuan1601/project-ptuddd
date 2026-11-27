@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 
 import 'env.dart';
 import 'supabase_client.dart';
@@ -32,7 +33,8 @@ abstract final class PushService {
         await FirebaseMessaging.instance.getInitialMessage(),
       );
       _ready = true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('PushService.initialize lỗi: $e');
       _ready = false;
     }
   }
@@ -58,8 +60,9 @@ abstract final class PushService {
       final token = await messaging.getToken();
       if (token != null) await _saveToken(token);
       _tokenSubscription ??= messaging.onTokenRefresh.listen(_saveToken);
-    } catch (_) {
+    } catch (e) {
       // Không có thông báo đẩy vẫn dùng được app.
+      debugPrint('PushService.register lỗi: $e');
     }
   }
 

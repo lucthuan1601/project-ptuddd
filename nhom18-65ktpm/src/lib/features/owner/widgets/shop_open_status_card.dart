@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/supabase_client.dart';
+import '../../../core/supabase_errors.dart';
 import '../../../models/shop.dart';
+import '../../../repositories/auth_repository.dart';
 
 class ShopOpenStatusCard extends StatefulWidget {
-  const ShopOpenStatusCard({super.key, required this.shop, this.onChanged});
+  const ShopOpenStatusCard({
+    super.key,
+    required this.shop,
+    this.onChanged,
+    this.compact = false,
+  });
 
   final Shop shop;
   final VoidCallback? onChanged;
+  final bool compact;
 
   @override
   State<ShopOpenStatusCard> createState() => _ShopOpenStatusCardState();
@@ -55,70 +63,70 @@ class _ShopOpenStatusCardState extends State<ShopOpenStatusCard> {
 
     setState(() => _busy = true);
     try {
-      final ownerId = supabase.auth.currentUser?.id;
-      if (ownerId == null) {
-        throw StateError('Vui lòng đăng nhập lại.');
-      }
+      await guardSupabase(() async {
+        final ownerId = supabase.auth.currentUser?.id;
+        if (ownerId == null) {
+          throw const AppException('Vui lòng đăng nhập lại.');
+        }
 
-      final shop = await supabase
-          .from('shops')
-          .select('id,owner_id,status,is_open')
-          .eq('id', widget.shop.id)
-          .eq('owner_id', ownerId)
-          .maybeSingle();
+        final shop = await supabase
+            .from('shops')
+            .select('id,owner_id,status,is_open')
+            .eq('id', widget.shop.id)
+            .eq('owner_id', ownerId)
+            .maybeSingle();
 
-      if (shop == null) {
-        throw StateError('Không tìm thấy tiệm thuộc tài khoản của bạn.');
-      }
-      if (shop['status'] != 'approved') {
-        throw StateError('Tiệm chưa được Admin phê duyệt.');
-      }
+        if (shop == null) {
+          throw const AppException('Không tìm thấy tiệm thuộc tài khoản của bạn.');
+        }
+        if (shop['status'] != 'approved') {
+          throw const AppException('Tiệm chưa được Admin phê duyệt.');
+        }
 
-      final oldValue = shop['is_open'] == true;
-      if (!value && oldValue) {
-        final active = await supabase
-            .from('sos_requests')
-            .select('id')
-            .eq('accepted_shop_id', widget.shop.id)
-            .eq('status', 'accepted')
-            .limit(1);
-        if (active.isNotEmpty) {
-          throw StateError(
-            'Tiệm đang xử lý ca SOS. Hãy hoàn thành ca trước khi đóng cửa.',
+        final oldValue = shop['is_open'] == true;
+        if (!value && oldValue) {
+          final active = await supabase
+              .from('sos_requests')
+              .select('id')
+              .eq('accepted_shop_id', widget.shop.id)
+              .eq('status', 'accepted')
+              .limit(1);
+          if (active.isNotEmpty) {
+            throw const AppException(
+              'Vui lòng hoàn thành ca cứu hộ đang xử lý trước khi tạm đóng cửa.',
+            );
+          }
+        }
+
+        if (oldValue == value) {
+          if (mounted) setState(() => _isOpen = oldValue);
+          _showMessage('Trạng thái tiệm đã được cập nhật trước đó.');
+          return;
+        }
+
+        final updated = await supabase
+            .from('shops')
+            .update({'is_open': value})
+            .eq('id', widget.shop.id)
+            .eq('owner_id', ownerId)
+            .eq('status', 'approved')
+            .eq('is_open', oldValue)
+            .select('is_open')
+            .maybeSingle();
+
+        if (updated == null) {
+          throw const AppException(
+            'Không cập nhật được trạng thái. Hãy tải lại tiệm.',
           );
         }
-      }
 
-      if (oldValue == value) {
-        if (mounted) {
-          setState(() => _isOpen = oldValue);
-        }
-        _showMessage('Trạng thái tiệm đã được cập nhật trước đó.');
-        return;
-      }
-
-      final updated = await supabase
-          .from('shops')
-          .update({'is_open': value})
-          .eq('id', widget.shop.id)
-          .eq('owner_id', ownerId)
-          .eq('status', 'approved')
-          .eq('is_open', oldValue)
-          .select('is_open')
-          .maybeSingle();
-
-      if (updated == null) {
-        throw StateError('Không cập nhật được trạng thái. Hãy tải lại tiệm.');
-      }
-
-      if (!mounted) {
-        return;
-      }
-      setState(() => _isOpen = updated['is_open'] == true);
-      _showMessage(_isOpen ? 'Tiệm đã mở cửa.' : 'Tiệm đã tạm đóng cửa.');
-      widget.onChanged?.call();
-    } catch (error) {
-      _showMessage('Cập nhật thất bại: $error');
+        if (!mounted) return;
+        setState(() => _isOpen = updated['is_open'] == true);
+        _showMessage(_isOpen ? 'Tiệm đã mở cửa.' : 'Tiệm đã tạm đóng cửa.');
+        widget.onChanged?.call();
+      });
+    } on AppException catch (error) {
+      _showMessage(error.message);
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -129,6 +137,23 @@ class _ShopOpenStatusCardState extends State<ShopOpenStatusCard> {
   @override
   Widget build(BuildContext context) {
     final approved = widget.shop.status == 'approved';
+    final toggle = Column(
+      children: [
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          value: _isOpen,
+          title: Text(_isOpen ? 'Đang mở cửa' : 'Tạm đóng cửa'),
+          subtitle: Text(
+            approved
+                ? 'Trạng thái này ảnh hưởng đến việc hiển thị tiệm cho khách.'
+                : 'Chỉ được bật/tắt khi tiệm đã được duyệt.',
+          ),
+          onChanged: approved && !_busy ? _setOpen : null,
+        ),
+        if (_busy) const LinearProgressIndicator(),
+      ],
+    );
+    if (widget.compact) return toggle;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -145,18 +170,7 @@ class _ShopOpenStatusCardState extends State<ShopOpenStatusCard> {
                 Chip(label: Text(_statusText(widget.shop.status))),
               ],
             ),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              value: _isOpen,
-              title: Text(_isOpen ? 'Đang mở cửa' : 'Tạm đóng cửa'),
-              subtitle: Text(
-                approved
-                    ? 'Trạng thái này ảnh hưởng đến việc hiển thị tiệm cho khách.'
-                    : 'Chỉ được bật/tắt khi tiệm đã được duyệt.',
-              ),
-              onChanged: approved && !_busy ? _setOpen : null,
-            ),
-            if (_busy) const LinearProgressIndicator(),
+            toggle,
           ],
         ),
       ),

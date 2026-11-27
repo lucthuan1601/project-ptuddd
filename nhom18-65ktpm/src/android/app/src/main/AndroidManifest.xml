@@ -5,10 +5,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
-        android:label="ketnoitinhnguyenvienxemay"
+        android:label="Cứu hộ Xe máy"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <!-- TODO(hieu): thay key that tu Google Cloud Console truoc khi test ban do. -->
+        <!-- TODO: thay key that tu Google Cloud Console truoc khi test ban do. -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="YOUR_GOOGLE_MAPS_API_KEY"/>

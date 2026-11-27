@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import '../data/admin_statistics_repository.dart';
 
 class AdminStatisticsScreen extends StatefulWidget {
-  const AdminStatisticsScreen({super.key});
+  const AdminStatisticsScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<AdminStatisticsScreen> createState() => _AdminStatisticsScreenState();
@@ -154,14 +156,7 @@ class _AdminStatisticsScreenState extends State<AdminStatisticsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('UC-15: Thống kê hệ thống'),
-        actions: [
-          IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
-        ],
-      ),
-      body: FutureBuilder<AdminStatisticsSnapshot>(
+    final content = FutureBuilder<AdminStatisticsSnapshot>(
         future: _future,
         builder: (context, snapshot) {
           final data = snapshot.data;
@@ -269,7 +264,16 @@ class _AdminStatisticsScreenState extends State<AdminStatisticsScreen> {
             ),
           );
         },
+      );
+    if (widget.embedded) return content;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('UC-15: Thống kê hệ thống'),
+        actions: [
+          IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
+        ],
       ),
+      body: content,
     );
   }
 }

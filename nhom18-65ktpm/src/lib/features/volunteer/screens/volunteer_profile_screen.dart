@@ -13,7 +13,15 @@ import '../volunteer_rules.dart';
 
 /// UC-13: đăng ký / cập nhật hồ sơ tình nguyện viên. Pop true khi lưu thành công.
 class VolunteerProfileScreen extends StatefulWidget {
-  const VolunteerProfileScreen({super.key});
+  const VolunteerProfileScreen({
+    super.key,
+    this.onSaved,
+    this.showLogout = false,
+  });
+
+  /// Callback dùng khi mở trực tiếp từ AuthGate onboarding (chưa có hồ sơ).
+  final VoidCallback? onSaved;
+  final bool showLogout;
 
   @override
   State<VolunteerProfileScreen> createState() => _VolunteerProfileScreenState();
@@ -96,6 +104,7 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
       );
       if (file == null) return;
       final bytes = await file.readAsBytes();
+      if (!mounted) return;
       final error = validateIdCard(
         fileName: file.name,
         sizeBytes: bytes.length,
@@ -105,7 +114,9 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
         if (error == null) _newIdCard = _PickedImage(bytes, file.name);
       });
     } catch (_) {
-      setState(() => _error = 'Không mở được camera / thư viện ảnh.');
+      if (mounted) {
+        setState(() => _error = 'Không mở được camera / thư viện ảnh.');
+      }
     }
   }
 
@@ -150,6 +161,7 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
         rethrow;
       }
       _old = saved;
+      _newIdCard = null;
       await _repo.updateLocation(
         latitude: position.latitude,
         longitude: position.longitude,
@@ -161,7 +173,11 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(_successMessage(old, saved))));
-      Navigator.of(context).pop(true);
+      if (widget.onSaved != null) {
+        widget.onSaved!();
+      } else {
+        Navigator.of(context).pop(true);
+      }
     } on AppException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
@@ -184,7 +200,17 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Hồ sơ tình nguyện viên')),
+      appBar: AppBar(
+        title: const Text('Hồ sơ tình nguyện viên'),
+        actions: [
+          if (widget.showLogout)
+            IconButton(
+              tooltip: 'Đăng xuất',
+              onPressed: () => AuthRepository().signOut(),
+              icon: const Icon(Icons.logout),
+            ),
+        ],
+      ),
       body: SafeArea(child: _buildBody(context)),
     );
   }
@@ -224,7 +250,12 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                 child: ListTile(
                   leading: const Icon(Icons.verified_user),
                   title: const Text('Trạng thái hồ sơ'),
-                  subtitle: Text(volunteerStatusLabel(old.status)),
+                  subtitle: Text(
+                    old.status == 'rejected' &&
+                            (old.rejectionReason?.trim().isNotEmpty ?? false)
+                        ? '${volunteerStatusLabel(old.status)}\nLý do: ${old.rejectionReason}'
+                        : volunteerStatusLabel(old.status),
+                  ),
                 ),
               ),
             const SizedBox(height: 12),

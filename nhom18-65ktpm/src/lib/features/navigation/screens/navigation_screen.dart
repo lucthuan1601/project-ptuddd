@@ -55,6 +55,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
         NavigationHelper.estimateMotorbikeMinutes(_distanceMeters);
   }
 
+  @override
+  void dispose() {
+    _mapController?.dispose();
+    super.dispose();
+  }
+
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
     _fitBounds();
@@ -67,6 +73,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final southWestLng = math.min(_origin.longitude, _destination.longitude);
     final northEastLat = math.max(_origin.latitude, _destination.latitude);
     final northEastLng = math.max(_origin.longitude, _destination.longitude);
+
+    // Tránh lỗi LatLngBounds khi điểm nguồn trùng điểm đích.
+    if ((northEastLat - southWestLat).abs() < 1e-5 &&
+        (northEastLng - southWestLng).abs() < 1e-5) {
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLngZoom(_destination, 16),
+      );
+      return;
+    }
 
     final bounds = LatLngBounds(
       southwest: LatLng(southWestLat, southWestLng),

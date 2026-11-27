@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../features/owner/data/owner_shop_repository.dart';
 import '../../features/owner/screens/shop_editor_screen.dart';
 import '../../features/owner/widgets/shop_open_status_card.dart';
+import '../../features/sos/widgets/sos_inbox.dart';
 import '../../models/shop.dart';
 import '../../repositories/auth_repository.dart';
+import '../push_service.dart';
 
+/// Phân hệ Chủ tiệm: UC-09, UC-10, UC-11 (quản lý tiệm) & UC-12 (hộp thư SOS).
 class OwnerShell extends StatefulWidget {
   const OwnerShell({super.key});
 
@@ -16,11 +21,23 @@ class OwnerShell extends StatefulWidget {
 class _OwnerShellState extends State<OwnerShell> {
   final _repository = OwnerShopRepository();
   late Future<List<Shop>> _shops;
+  StreamSubscription<String>? _pushSubscription;
+  int _tab = 0;
 
   @override
   void initState() {
     super.initState();
     _shops = _repository.myShops();
+    if (PushService.takeInitialSosId() != null) _tab = 1;
+    _pushSubscription = PushService.sosAlerts.listen((_) {
+      if (mounted) setState(() => _tab = 1);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pushSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _reload() async {
@@ -102,9 +119,15 @@ class _OwnerShellState extends State<OwnerShell> {
               ),
             if (shop.status == 'rejected' &&
                 (shop.rejectionReason?.trim().isNotEmpty ?? false))
-              Text('Lý do từ chối: ${shop.rejectionReason}'),
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Lý do từ chối: ${shop.rejectionReason}',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
             if (shop.status == 'approved')
-              ShopOpenStatusCard(shop: shop, onChanged: _reload),
+              ShopOpenStatusCard(shop: shop, compact: true, onChanged: _reload),
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
@@ -122,17 +145,62 @@ class _OwnerShellState extends State<OwnerShell> {
     );
   }
 
+  Widget _buildShopsTab() {
+    return FutureBuilder<List<Shop>>(
+      future: _shops,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Không tải được danh sách. Kiểm tra mạng và quyền truy cập.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                TextButton(onPressed: _reload, child: const Text('Thử lại')),
+              ],
+            ),
+          );
+        }
+        final shops = snapshot.data ?? <Shop>[];
+        return RefreshIndicator(
+          onRefresh: _reload,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+            children: shops.isEmpty
+                ? [
+                    const SizedBox(height: 100),
+                    const Center(
+                      child: Text('Bạn chưa có tiệm. Hãy chọn Đăng ký tiệm.'),
+                    ),
+                  ]
+                : shops.map(_shopCard).toList(),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Quản lý tiệm'),
+        title: Text(_tab == 0 ? 'Quản lý tiệm' : 'Yêu cầu cứu hộ SOS'),
         actions: [
-          IconButton(
-            tooltip: 'Làm mới',
-            onPressed: _reload,
-            icon: const Icon(Icons.refresh),
-          ),
+          if (_tab == 0)
+            IconButton(
+              tooltip: 'Làm mới',
+              onPressed: _reload,
+              icon: const Icon(Icons.refresh),
+            ),
           IconButton(
             tooltip: 'Đăng xuất',
             onPressed: () => AuthRepository().signOut(),
@@ -140,51 +208,29 @@ class _OwnerShellState extends State<OwnerShell> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openForm(),
-        icon: const Icon(Icons.add_business),
-        label: const Text('Đăng ký tiệm'),
-      ),
-      body: FutureBuilder<List<Shop>>(
-        future: _shops,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'Không tải được danh sách. Kiểm tra mạng và quyền truy cập.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  TextButton(onPressed: _reload, child: const Text('Thử lại')),
-                ],
-              ),
-            );
-          }
-          final shops = snapshot.data ?? <Shop>[];
-          return RefreshIndicator(
-            onRefresh: _reload,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-              children: shops.isEmpty
-                  ? [
-                      const SizedBox(height: 100),
-                      const Center(
-                        child: Text('Bạn chưa có tiệm. Hãy chọn Đăng ký tiệm.'),
-                      ),
-                    ]
-                  : shops.map(_shopCard).toList(),
-            ),
-          );
-        },
+      floatingActionButton: _tab == 0
+          ? FloatingActionButton.extended(
+              onPressed: () => _openForm(),
+              icon: const Icon(Icons.add_business),
+              label: const Text('Đăng ký tiệm'),
+            )
+          : null,
+      body: _tab == 0
+          ? _buildShopsTab()
+          : SosInbox(onCaseFinished: _reload),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: (i) => setState(() => _tab = i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.storefront),
+            label: 'Tiệm của tôi',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.sos),
+            label: 'Cứu hộ SOS',
+          ),
+        ],
       ),
     );
   }

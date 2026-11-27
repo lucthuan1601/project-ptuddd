@@ -42,9 +42,8 @@ class _VolunteerShellState extends State<VolunteerShell> {
   @override
   void initState() {
     super.initState();
-    unawaited(PushService.register());
     // Bấm thông báo SOS / có SOS lúc đang mở app: chuyển về tab nhận ca.
-    PushService.takeInitialSosId();
+    if (PushService.takeInitialSosId() != null) _tab = 0;
     _pushSubscription = PushService.sosAlerts.listen((_) {
       if (mounted) setState(() => _tab = 0);
     });
@@ -206,9 +205,12 @@ class _RescueTab extends StatelessWidget {
         ),
       );
     } else if (profile.status != 'approved') {
+      final reason = profile.rejectionReason?.trim() ?? '';
       content = _Centered(
         icon: Icons.hourglass_top,
-        text: volunteerStatusLabel(profile.status),
+        text: profile.status == 'rejected' && reason.isNotEmpty
+            ? '${volunteerStatusLabel(profile.status)}\nLý do: $reason'
+            : volunteerStatusLabel(profile.status),
       );
     } else if (!profile.isAvailable) {
       content = const _Centered(
@@ -247,7 +249,12 @@ class _ProfileTab extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.verified_user),
           title: const Text('Trạng thái hồ sơ'),
-          subtitle: Text(volunteerStatusLabel(profile.status)),
+          subtitle: Text(
+            profile.status == 'rejected' &&
+                    (profile.rejectionReason?.trim().isNotEmpty ?? false)
+                ? '${volunteerStatusLabel(profile.status)}\nLý do: ${profile.rejectionReason}'
+                : volunteerStatusLabel(profile.status),
+          ),
         ),
         ListTile(
           leading: const Icon(Icons.phone),

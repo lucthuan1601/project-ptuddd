@@ -21,64 +21,12 @@ begin
 end $$;
 
 -- ============================================================
--- 2. Sửa trigger bảo vệ cột trong 03_functions.sql
--- Hàm security definer luôn thấy current_user = postgres nên điều kiện
--- "current_user in (authenticated, anon)" không bao giờ đúng: client tự đổi
--- được role/status/rating. Chạy với quyền người gọi thì trigger mới có tác dụng.
+-- 2. Đảm bảo trigger bảo vệ cột chạy security invoker
+-- Logic đầy đủ (rejection_reason, banned, active SOS) đã được đồng bộ trong 03_functions.sql.
 -- ============================================================
 alter function public.protect_user_columns() security invoker;
 alter function public.protect_shop_columns() security invoker;
-
--- ============================================================
--- 3. Quy tắc hồ sơ tình nguyện viên (UC-11, UC-13)
--- Thay hàm cùng tên trong 03_functions.sql (trigger cũ tự dùng bản mới),
--- chạy với quyền người gọi giống mục 2.
--- - Đổi SĐT / giấy tờ khi đã duyệt -> chờ duyệt lại.
--- - Hồ sơ bị từ chối mà sửa nội dung -> gửi duyệt lại (chỉ cập nhật vị trí thì không).
--- - Không tắt "sẵn sàng" khi đang có ca SOS chưa hoàn thành.
--- - Hồ sơ chưa duyệt / bị khóa thì không được ở trạng thái sẵn sàng.
--- ============================================================
-create or replace function public.protect_volunteer_columns()
-returns trigger
-language plpgsql
-security invoker
-set search_path = public, extensions
-as $$
-begin
-  if current_user::text in ('authenticated', 'anon') and not public.is_admin() then
-    new.user_id := old.user_id;
-    new.status := old.status;
-    new.completed_count := old.completed_count;
-    new.created_at := old.created_at;
-
-    if old.status = 'rejected'
-       and (new.phone, new.skills, new.tools, new.id_card_url, new.service_radius_km)
-           is distinct from
-           (old.phone, old.skills, old.tools, old.id_card_url, old.service_radius_km) then
-      new.status := 'pending';
-    elsif old.status = 'approved'
-       and (new.phone is distinct from old.phone
-            or new.id_card_url is distinct from old.id_card_url) then
-      new.status := 'pending';
-    end if;
-
-    if old.is_available and not new.is_available and exists (
-      select 1
-        from public.sos_requests
-       where accepted_volunteer_id = old.id
-         and status = 'accepted'
-    ) then
-      raise exception 'Vui lòng hoàn thành ca cứu hộ đang xử lý trước khi tạm nghỉ';
-    end if;
-  end if;
-
-  if new.status <> 'approved' then
-    new.is_available := false;
-  end if;
-
-  return new;
-end;
-$$;
+alter function public.protect_volunteer_columns() security invoker;
 
 -- ============================================================
 -- 4. Khóa ca: mỗi tiệm / TNV chỉ xử lý một ca tại một thời điểm (UC-12)
@@ -213,6 +161,10 @@ as $$
      where vp.status = 'approved'
        and vp.is_available
        and vp.location is not null
+       and not exists (
+         select 1 from public.sos_requests a
+          where a.status = 'accepted' and a.accepted_volunteer_id = vp.id
+       )
        and st_dwithin(vp.location, p.point, vp.service_radius_km * 1000)
     union all
     select p.id, st_distance(s.location, p.point),
@@ -221,6 +173,10 @@ as $$
       join public.shops s on s.owner_id = (select id from me)
      where s.status = 'approved'
        and s.is_open
+       and not exists (
+         select 1 from public.sos_requests a
+          where a.status = 'accepted' and a.accepted_shop_id = s.id
+       )
        and (s.category = 'repair_shop' or p.issue_type = 'Hết xăng')
        and st_dwithin(s.location, p.point, 5000)
   ),
@@ -295,6 +251,10 @@ as $$
         on vp.status = 'approved'
        and vp.is_available
        and vp.location is not null
+       and not exists (
+         select 1 from public.sos_requests a
+          where a.status = 'accepted' and a.accepted_volunteer_id = vp.id
+       )
        and st_dwithin(vp.location, sos.point, vp.service_radius_km * 1000)
       join public.users u on u.id = vp.user_id
      where u.id <> sos.rider_id
@@ -305,6 +265,10 @@ as $$
       join public.shops s
         on s.status = 'approved'
        and s.is_open
+       and not exists (
+         select 1 from public.sos_requests a
+          where a.status = 'accepted' and a.accepted_shop_id = s.id
+       )
        and (s.category = 'repair_shop' or sos.issue_type = 'Hết xăng')
        and st_dwithin(s.location, sos.point, 5000)
       join public.users u on u.id = s.owner_id

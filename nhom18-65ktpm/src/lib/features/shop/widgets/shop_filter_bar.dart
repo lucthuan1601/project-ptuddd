@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Bộ lọc tìm kiếm và bán kính tiệm sửa xe & cây xăng (UC-03).
-class ShopFilterBar extends StatelessWidget {
+class ShopFilterBar extends StatefulWidget {
   const ShopFilterBar({
     super.key,
     required this.searchQuery,
@@ -25,6 +25,30 @@ class ShopFilterBar extends StatelessWidget {
   final ValueChanged<bool> onOpenOnlyChanged;
 
   @override
+  State<ShopFilterBar> createState() => _ShopFilterBarState();
+}
+
+class _ShopFilterBarState extends State<ShopFilterBar> {
+  late final _controller = TextEditingController(text: widget.searchQuery);
+
+  @override
+  void didUpdateWidget(ShopFilterBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.searchQuery != _controller.text) {
+      _controller.value = TextEditingValue(
+        text: widget.searchQuery,
+        selection: TextSelection.collapsed(offset: widget.searchQuery.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
@@ -44,11 +68,22 @@ class ShopFilterBar extends StatelessWidget {
         children: [
           // Ô tìm kiếm theo tên hoặc đường
           TextField(
-            onChanged: onSearchChanged,
+            controller: _controller,
+            onChanged: widget.onSearchChanged,
             decoration: InputDecoration(
               hintText: 'Tìm tiệm sửa xe, cây xăng, tên đường...',
               hintStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
               prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: widget.searchQuery.isNotEmpty
+                  ? IconButton(
+                      tooltip: 'Xóa tìm kiếm',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        _controller.clear();
+                        widget.onSearchChanged('');
+                      },
+                    )
+                  : null,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 8),
               border: OutlineInputBorder(
@@ -89,13 +124,13 @@ class ShopFilterBar extends StatelessWidget {
                 const SizedBox(width: 8),
                 // Bán kính
                 ...[1000, 3000, 5000, 10000].map((radius) {
-                  final isSelected = selectedRadiusMeters == radius;
+                  final isSelected = widget.selectedRadiusMeters == radius;
                   return Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: ChoiceChip(
                       label: Text('${radius ~/ 1000} km', style: const TextStyle(fontSize: 12)),
                       selected: isSelected,
-                      onSelected: (_) => onRadiusChanged(radius),
+                      onSelected: (_) => widget.onRadiusChanged(radius),
                       selectedColor: const Color(0xFFE3F2FD),
                       visualDensity: VisualDensity.compact,
                     ),
@@ -107,20 +142,20 @@ class ShopFilterBar extends StatelessWidget {
                   avatar: Icon(
                     Icons.access_time_filled,
                     size: 16,
-                    color: isOpenOnly ? Colors.white : Colors.green[700],
+                    color: widget.isOpenOnly ? Colors.white : Colors.green[700],
                   ),
                   label: Text(
                     'Đang mở',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isOpenOnly ? Colors.white : Colors.black87,
-                      fontWeight: isOpenOnly ? FontWeight.bold : FontWeight.normal,
+                      color: widget.isOpenOnly ? Colors.white : Colors.black87,
+                      fontWeight: widget.isOpenOnly ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
-                  selected: isOpenOnly,
+                  selected: widget.isOpenOnly,
                   selectedColor: Colors.green[600],
                   checkmarkColor: Colors.white,
-                  onSelected: onOpenOnlyChanged,
+                  onSelected: widget.onOpenOnlyChanged,
                   visualDensity: VisualDensity.compact,
                 ),
               ],
@@ -136,7 +171,7 @@ class ShopFilterBar extends StatelessWidget {
     required String? category,
     required IconData icon,
   }) {
-    final isSelected = selectedCategory == category;
+    final isSelected = widget.selectedCategory == category;
     return ChoiceChip(
       avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.blueGrey),
       label: Text(
@@ -148,7 +183,7 @@ class ShopFilterBar extends StatelessWidget {
         ),
       ),
       selected: isSelected,
-      onSelected: (_) => onCategoryChanged(category),
+      onSelected: (_) => widget.onCategoryChanged(category),
       selectedColor: const Color(0xFF1E88E5),
       visualDensity: VisualDensity.compact,
     );

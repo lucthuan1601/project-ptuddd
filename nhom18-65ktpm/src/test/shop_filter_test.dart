@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ketnoitinhnguyenvienxemay/features/shop/shop_filter.dart';
 import 'package:ketnoitinhnguyenvienxemay/models/shop.dart';
 
 void main() {
@@ -58,13 +59,15 @@ void main() {
     ];
 
     test('Lọc theo từ khóa tìm kiếm tên tiệm hoặc địa chỉ', () {
-      final query = 'Honda'.toLowerCase();
-      final filtered = sampleShops.where((s) =>
-          s.name.toLowerCase().contains(query) ||
-          s.address.toLowerCase().contains(query)).toList();
+      final byName = filterShops(sampleShops, 'Honda');
+      expect(byName.length, 1);
+      expect(byName.first.id, '1');
 
-      expect(filtered.length, 1);
-      expect(filtered.first.id, '1');
+      final byAddress = filterShops(sampleShops, 'Trường Chinh');
+      expect(byAddress.length, 1);
+      expect(byAddress.first.id, '2');
+
+      expect(filterShops(sampleShops, '   ').length, 3);
     });
 
     test('Lọc theo danh mục tiệm sửa xe hoặc cây xăng', () {

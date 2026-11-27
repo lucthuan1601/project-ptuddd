@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../models/sos_request.dart';
@@ -7,6 +9,7 @@ import '../../../repositories/sos_repository.dart';
 import '../../review/widgets/review_form.dart';
 import '../data/supabase_sos_repository.dart';
 import '../sos_actions.dart';
+import '../sos_rules.dart';
 
 /// UC-07 (bước 6): rider theo dõi ca SOS realtime cho tới khi có người nhận / hoàn thành.
 class SosTrackingScreen extends StatefulWidget {
@@ -23,10 +26,60 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
   late Stream<SosRequest?> _stream = _repo.watchById(widget.sosId);
 
   Future<SosContact>? _contact;
+  Timer? _timeoutTimer;
+  bool _checkedHelpers = false;
+  bool _noNearbyHelpers = false;
+  bool _timedOut = false;
   bool _cancelling = false;
 
+  @override
+  void dispose() {
+    _timeoutTimer?.cancel();
+    super.dispose();
+  }
+
   void _retry() {
-    setState(() => _stream = _repo.watchById(widget.sosId));
+    setState(() {
+      _contact = null;
+      _stream = _repo.watchById(widget.sosId);
+    });
+  }
+
+  void _reloadContact(String sosId) {
+    setState(() => _contact = _repo.contact(sosId));
+  }
+
+  void _ensurePendingChecks(SosRequest sos) {
+    if (!_checkedHelpers) {
+      _checkedHelpers = true;
+      unawaited(
+        _repo
+            .hasNearbyHelpers(latitude: sos.latitude, longitude: sos.longitude)
+            .then((hasHelpers) {
+              if (mounted && !hasHelpers) {
+                setState(() => _noNearbyHelpers = true);
+              }
+            }),
+      );
+    }
+    if (_timeoutTimer != null) return;
+
+    final created = sos.createdAt?.toLocal() ?? DateTime.now();
+    final remaining = sosTimeout - DateTime.now().difference(created);
+    if (remaining <= Duration.zero) {
+      unawaited(_handleTimeout());
+      return;
+    }
+    _timeoutTimer = Timer(remaining, () => unawaited(_handleTimeout()));
+  }
+
+  Future<void> _handleTimeout() async {
+    try {
+      await _repo.cancel(widget.sosId);
+      if (mounted) setState(() => _timedOut = true);
+    } on AppException {
+      // Ca có thể vừa được tiếp nhận trước khi timeout kích hoạt.
+    }
   }
 
   Future<void> _review(String shopId) async {
@@ -106,12 +159,24 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
               );
             }
 
+            if (sos.status != 'pending') {
+              _timeoutTimer?.cancel();
+            }
+
             switch (sos.status) {
               case 'pending':
-                return _Waiting(cancelling: _cancelling, onCancel: _cancel);
+                _ensurePendingChecks(sos);
+                return _Waiting(
+                  cancelling: _cancelling,
+                  noNearbyHelpers: _noNearbyHelpers,
+                  onCancel: _cancel,
+                );
               case 'accepted':
                 _contact ??= _repo.contact(sos.id);
-                return _Accepted(contact: _contact!);
+                return _Accepted(
+                  contact: _contact!,
+                  onRetry: () => _reloadContact(sos.id),
+                );
               case 'completed':
                 final shopId = sos.acceptedShopId;
                 return _Message(
@@ -127,9 +192,12 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
                         ),
                 );
               default:
-                return const _Message(
-                  icon: Icons.cancel_outlined,
-                  text: 'Bạn đã hủy yêu cầu cứu hộ này.',
+                return _Message(
+                  icon: _timedOut ? Icons.timer_off : Icons.cancel_outlined,
+                  text: _timedOut
+                      ? 'Quá 5 phút chưa có người tiếp nhận. Yêu cầu đã tự động hủy, vui lòng gọi trực tiếp hotline khẩn cấp.'
+                      : 'Bạn đã hủy yêu cầu cứu hộ này.',
+                  action: _timedOut ? const _HotlineButtons() : null,
                 );
             }
           },
@@ -140,9 +208,14 @@ class _SosTrackingScreenState extends State<SosTrackingScreen> {
 }
 
 class _Waiting extends StatefulWidget {
-  const _Waiting({required this.cancelling, required this.onCancel});
+  const _Waiting({
+    required this.cancelling,
+    required this.noNearbyHelpers,
+    required this.onCancel,
+  });
 
   final bool cancelling;
+  final bool noNearbyHelpers;
   final VoidCallback onCancel;
 
   @override
@@ -167,7 +240,7 @@ class _WaitingState extends State<_Waiting>
     final color = Theme.of(context).colorScheme.error;
 
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -202,11 +275,17 @@ class _WaitingState extends State<_Waiting>
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Đã gửi tín hiệu tới các tiệm và tình nguyện viên ở gần. '
-              'Màn hình sẽ tự cập nhật khi có người tiếp nhận.',
+            Text(
+              widget.noNearbyHelpers
+                  ? 'Hiện không có tiệm sửa xe hoặc tình nguyện viên nào hoạt động gần bạn. Vui lòng gọi trực tiếp hotline cứu hộ khẩn cấp.'
+                  : 'Đã gửi tín hiệu tới các tiệm và tình nguyện viên ở gần. '
+                      'Tự động hủy sau 5 phút nếu chưa có người tiếp nhận.',
               textAlign: TextAlign.center,
             ),
+            if (widget.noNearbyHelpers) ...[
+              const SizedBox(height: 16),
+              const _HotlineButtons(),
+            ],
             const SizedBox(height: 24),
             OutlinedButton(
               onPressed: widget.cancelling ? null : widget.onCancel,
@@ -219,10 +298,32 @@ class _WaitingState extends State<_Waiting>
   }
 }
 
+class _HotlineButtons extends StatelessWidget {
+  const _HotlineButtons();
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.center,
+      children: [
+        for (final item in emergencyHotlines)
+          ActionChip(
+            avatar: const Icon(Icons.call, size: 18),
+            label: Text(item.label),
+            onPressed: () => launchPhoneCall(context, item.phone),
+          ),
+      ],
+    );
+  }
+}
+
 class _Accepted extends StatelessWidget {
-  const _Accepted({required this.contact});
+  const _Accepted({required this.contact, required this.onRetry});
 
   final Future<SosContact> contact;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -254,13 +355,18 @@ class _Accepted extends StatelessWidget {
                 const SizedBox(height: 20),
                 if (snapshot.connectionState == ConnectionState.waiting)
                   const CircularProgressIndicator()
-                else if (info == null)
+                else if (info == null) ...[
                   Text(
                     snapshot.error?.toString() ??
                         'Không tải được thông tin người hỗ trợ.',
                     textAlign: TextAlign.center,
-                  )
-                else
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: onRetry,
+                    child: const Text('Thử lại'),
+                  ),
+                ] else
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.person),

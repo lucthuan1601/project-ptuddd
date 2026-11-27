@@ -3,14 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../models/sos_request.dart';
 import '../../../repositories/auth_repository.dart';
 import '../data/supabase_sos_repository.dart';
 import '../screens/active_case_screen.dart';
 import '../sos_rules.dart';
 
+enum _AlertDecision { accept, reject, dismiss, gone }
+
 /// UC-12: hộp thư SOS của người nhận (TNV hoặc chủ tiệm).
-/// Ca mới hiện Pop-up khẩn cấp; ca bị người khác nhận / bị hủy tự biến mất.
-/// Chủ tiệm (Hiếu) chỉ cần đặt widget này vào màn hình của mình.
+/// Tự phát hiện ca đang xử lý (`accepted`), bật Pop-up khẩn cấp cho ca mới
+/// và tự thu nhỏ sau 60 giây (UC-12 A2).
 class SosInbox extends StatefulWidget {
   const SosInbox({super.key, this.onCaseFinished});
 
@@ -30,6 +33,7 @@ class _SosInboxState extends State<SosInbox> {
   final _rejected = <String>{};
 
   StreamSubscription<List<NearbySos>>? _subscription;
+  SosRequest? _activeCase;
   List<NearbySos> _items = const [];
   String? _error;
   bool _loaded = false;
@@ -39,7 +43,7 @@ class _SosInboxState extends State<SosInbox> {
   @override
   void initState() {
     super.initState();
-    _listen();
+    _init();
   }
 
   @override
@@ -47,6 +51,25 @@ class _SosInboxState extends State<SosInbox> {
     _subscription?.cancel();
     _currentIds.dispose();
     super.dispose();
+  }
+
+  Future<void> _init() async {
+    try {
+      final current = await _repo.myAcceptedCase();
+      if (!mounted) return;
+      if (current != null) {
+        setState(() {
+          _activeCase = current;
+          _loaded = true;
+          _error = null;
+        });
+        return;
+      }
+      setState(() => _activeCase = null);
+    } catch (_) {
+      // Nếu lỗi kiểm tra ca đang xử lý, tiếp tục nghe hộp thư như bình thường.
+    }
+    _listen();
   }
 
   void _listen() {
@@ -75,17 +98,17 @@ class _SosInboxState extends State<SosInbox> {
   }
 
   Future<void> _alertNewCase() async {
-    if (_dialogOpen || _accepting) return;
+    if (_dialogOpen || _accepting || _activeCase != null) return;
     final fresh = _visible.where((e) => !_alerted.contains(e.request.id));
     if (fresh.isEmpty) return;
 
     final item = fresh.first;
-    _alerted.addAll(_visible.map((e) => e.request.id));
+    _alerted.add(item.request.id);
     _dialogOpen = true;
     unawaited(HapticFeedback.heavyImpact());
     unawaited(SystemSound.play(SystemSoundType.alert));
 
-    final decision = await showDialog<bool>(
+    final decision = await showDialog<_AlertDecision>(
       context: context,
       barrierDismissible: false,
       builder: (_) => _SosAlertDialog(item: item, currentIds: _currentIds),
@@ -93,39 +116,51 @@ class _SosInboxState extends State<SosInbox> {
     _dialogOpen = false;
     if (!mounted) return;
 
-    if (decision == true) {
-      await _accept(item);
-    } else if (decision == false) {
-      setState(() => _rejected.add(item.request.id));
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Ca cứu hộ đã được người khác tiếp nhận hoặc đã bị hủy',
+    switch (decision) {
+      case _AlertDecision.accept:
+        await _accept(item);
+      case _AlertDecision.reject:
+        setState(() => _rejected.add(item.request.id));
+        unawaited(_alertNewCase());
+      case _AlertDecision.gone:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Ca cứu hộ đã được người khác tiếp nhận hoặc đã bị hủy',
+            ),
           ),
-        ),
-      );
+        );
+        unawaited(_alertNewCase());
+      case _AlertDecision.dismiss:
+      case null:
+        unawaited(_alertNewCase());
     }
   }
 
   List<NearbySos> get _visible =>
       _items.where((e) => !_rejected.contains(e.request.id)).toList();
 
+  Future<void> _openActiveCase(String sosId) async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => ActiveCaseScreen(sosId: sosId)));
+    if (!mounted) return;
+    widget.onCaseFinished?.call();
+    await _init();
+  }
+
   Future<void> _accept(NearbySos item) async {
     if (_accepting) return;
     setState(() => _accepting = true);
     final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
     try {
       final sos = await _repo.accept(
         sosId: item.request.id,
         shopId: item.shopId,
         volunteerId: item.volunteerId,
       );
-      await navigator.push(
-        MaterialPageRoute(builder: (_) => ActiveCaseScreen(sosId: sos.id)),
-      );
-      widget.onCaseFinished?.call();
+      if (!mounted) return;
+      await _openActiveCase(sos.id);
     } on AppException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
       // Ca đã mất hiệu lực: tải lại để ca biến khỏi danh sách ngay.
@@ -138,6 +173,23 @@ class _SosInboxState extends State<SosInbox> {
   @override
   Widget build(BuildContext context) {
     if (!_loaded) return const Center(child: CircularProgressIndicator());
+
+    final active = _activeCase;
+    if (active != null) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Card(
+          color: Theme.of(context).colorScheme.errorContainer,
+          child: ListTile(
+            leading: const Icon(Icons.sos),
+            title: Text('Đang xử lý ca: ${active.issueType}'),
+            subtitle: const Text('Hoàn thành ca này trước khi nhận ca mới'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _openActiveCase(active.id),
+          ),
+        ),
+      );
+    }
 
     final error = _error;
     if (error != null && _items.isEmpty) {
@@ -244,8 +296,7 @@ class _SosCard extends StatelessWidget {
   }
 }
 
-/// Pop-up khẩn cấp. Trả true = tiếp nhận, false = từ chối,
-/// null = ca không còn chờ (người khác đã nhận / rider hủy) nên tự đóng.
+/// Pop-up khẩn cấp: phân biệt Tiếp nhận / Từ chối / Tự thu nhỏ 60s / Hết hiệu lực.
 class _SosAlertDialog extends StatefulWidget {
   const _SosAlertDialog({required this.item, required this.currentIds});
 
@@ -257,28 +308,36 @@ class _SosAlertDialog extends StatefulWidget {
 }
 
 class _SosAlertDialogState extends State<_SosAlertDialog> {
+  Timer? _autoDismiss;
+  bool _closed = false;
+
   @override
   void initState() {
     super.initState();
     widget.currentIds.addListener(_onIdsChanged);
+    _autoDismiss = Timer(
+      sosPopupAutoDismiss,
+      () => _close(_AlertDecision.dismiss),
+    );
   }
 
   @override
   void dispose() {
+    _autoDismiss?.cancel();
     widget.currentIds.removeListener(_onIdsChanged);
     super.dispose();
   }
 
-  bool _closed = false;
-
-  void _close(bool? decision) {
+  void _close(_AlertDecision decision) {
     if (_closed || !mounted) return;
     _closed = true;
     Navigator.of(context).pop(decision);
   }
 
   void _onIdsChanged() {
-    if (!widget.currentIds.value.contains(widget.item.request.id)) _close(null);
+    if (!widget.currentIds.value.contains(widget.item.request.id)) {
+      _close(_AlertDecision.gone);
+    }
   }
 
   @override
@@ -286,33 +345,39 @@ class _SosAlertDialogState extends State<_SosAlertDialog> {
     final sos = widget.item.request;
     final note = sos.note ?? '';
 
-    return AlertDialog(
-      icon: Icon(
-        Icons.sos,
-        size: 48,
-        color: Theme.of(context).colorScheme.error,
-      ),
-      title: const Text('Yêu cầu cứu hộ khẩn cấp'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Sự cố: ${sos.issueType}'),
-          Text('Cách bạn: ${formatDistance(widget.item.distanceM)}'),
-          Text('SĐT: ${sos.contactPhone}'),
-          if (note.isNotEmpty) Text('Ghi chú: $note'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close(_AlertDecision.dismiss);
+      },
+      child: AlertDialog(
+        icon: Icon(
+          Icons.sos,
+          size: 48,
+          color: Theme.of(context).colorScheme.error,
+        ),
+        title: const Text('Yêu cầu cứu hộ khẩn cấp'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Sự cố: ${sos.issueType}'),
+            Text('Cách bạn: ${formatDistance(widget.item.distanceM)}'),
+            Text('SĐT: ${sos.contactPhone}'),
+            if (note.isNotEmpty) Text('Ghi chú: $note'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => _close(_AlertDecision.reject),
+            child: const Text('Từ chối'),
+          ),
+          FilledButton(
+            onPressed: () => _close(_AlertDecision.accept),
+            child: const Text('Tiếp nhận'),
+          ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => _close(false),
-          child: const Text('Từ chối'),
-        ),
-        FilledButton(
-          onPressed: () => _close(true),
-          child: const Text('Tiếp nhận'),
-        ),
-      ],
     );
   }
 }

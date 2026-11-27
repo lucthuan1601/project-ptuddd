@@ -7,8 +7,9 @@ import '../../call/call_helper.dart';
 import '../../navigation/navigation_helper.dart';
 import '../../navigation/screens/navigation_screen.dart';
 import '../../review/data/supabase_review_repository.dart';
+import '../../review/widgets/review_form.dart';
 import '../../review/widgets/review_list_item.dart';
-import '../../review/widgets/write_review_dialog.dart';
+import '../../sos/screens/sos_request_screen.dart';
 
 /// Màn hình Chi tiết Tiệm sửa xe & Cây xăng (UC-04).
 class ShopDetailScreen extends StatefulWidget {
@@ -44,11 +45,44 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   Future<void> _refreshShopData() async {
     try {
       final updated = await ShopRepository().byId(_shop.id);
-      if (updated != null && mounted) {
-        setState(() => _shop = updated);
+      if (!mounted) return;
+      if (updated == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Địa điểm không còn tồn tại trên hệ thống'),
+          ),
+        );
+        Navigator.of(context).pop();
+        return;
       }
+      setState(() {
+        // Giữ lại khoảng cách distanceM đã tính từ RPC tìm quanh đây.
+        _shop = Shop(
+          id: updated.id,
+          ownerId: updated.ownerId,
+          name: updated.name,
+          category: updated.category,
+          phone: updated.phone,
+          address: updated.address,
+          latitude: updated.latitude,
+          longitude: updated.longitude,
+          openTime: updated.openTime,
+          closeTime: updated.closeTime,
+          isOpen: updated.isOpen,
+          imageUrl: updated.imageUrl,
+          rating: updated.rating,
+          reviewCount: updated.reviewCount,
+          status: updated.status,
+          rejectionReason: updated.rejectionReason,
+          createdAt: updated.createdAt,
+          distanceM: _shop.distanceM,
+        );
+      });
     } catch (_) {}
   }
+
+  String _formatClock(String time) =>
+      time.length >= 5 ? time.substring(0, 5) : time;
 
   Future<void> _loadReviews() async {
     setState(() {
@@ -103,59 +137,21 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   }
 
   void _onSendSos() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: const [
-            Icon(Icons.warning_amber_rounded, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Yêu cầu Cứu hộ SOS'),
-          ],
-        ),
-        content: Text(
-          'Bạn đang gửi yêu cầu cứu hộ khẩn cấp tới "${_shop.name}".\n\n'
-          'Sau khi gửi, thông tin sự cố và vị trí GPS của bạn sẽ được chuyển đến chủ tiệm.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Đóng'),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Tín hiệu SOS đã được ghi nhận và gửi đi.'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            icon: const Icon(Icons.send),
-            label: const Text('Xác nhận gửi'),
-          ),
-        ],
-      ),
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SosRequestScreen()),
     );
   }
 
-  void _onWriteReview() {
-    showDialog(
-      context: context,
-      builder: (_) => WriteReviewDialog(
-        shopId: _shop.id,
-        shopName: _shop.name,
-        onSuccess: () {
-          _loadReviews();
-          _refreshShopData();
-        },
-      ),
+  Future<void> _onWriteReview() async {
+    final sent = await showReviewSheet(
+      context,
+      shopId: _shop.id,
+      shopName: _shop.name,
     );
+    if (sent && mounted) {
+      await _loadReviews();
+      await _refreshShopData();
+    }
   }
 
   @override
@@ -272,7 +268,8 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
                   const SizedBox(height: 8),
                   _buildInfoRow(
                     icon: Icons.access_time,
-                    text: 'Giờ mở cửa: ${_shop.openTime} - ${_shop.closeTime}',
+                    text:
+                        'Giờ mở cửa: ${_formatClock(_shop.openTime)} - ${_formatClock(_shop.closeTime)}',
                     color: Colors.blue,
                   ),
                   const SizedBox(height: 8),

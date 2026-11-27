@@ -20,14 +20,22 @@ class AuthRepository {
     final user = supabase.auth.currentUser;
     if (user == null) return null;
 
-    final data = await supabase
-        .from('users')
-        .select()
-        .eq('id', user.id)
-        .maybeSingle();
-    if (data == null) return null;
+    try {
+      final data = await supabase
+          .from('users')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+      if (data == null) return null;
 
-    return UserModel.fromMap(Map<String, dynamic>.from(data));
+      return UserModel.fromMap(Map<String, dynamic>.from(data));
+    } on PostgrestException catch (e) {
+      throw AppException(e.message);
+    } on Exception {
+      throw const AppException(
+        'Không kết nối được máy chủ. Kiểm tra mạng và thử lại.',
+      );
+    }
   }
 
   Future<UserModel> signIn({

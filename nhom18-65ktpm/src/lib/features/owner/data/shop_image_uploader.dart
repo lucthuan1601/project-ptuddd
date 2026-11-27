@@ -7,7 +7,9 @@ import '../../../repositories/auth_repository.dart';
 class ShopImageUploader {
   static const int maxBytes = 5 * 1024 * 1024;
 
-  Future<String> upload(XFile file) async {
+  Future<String> upload(XFile file) async => (await uploadWithPath(file)).url;
+
+  Future<({String url, String path})> uploadWithPath(XFile file) async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) {
       throw const AppException('Bạn cần đăng nhập lại.');
@@ -33,11 +35,21 @@ class ShopImageUploader {
             data,
             fileOptions: FileOptions(contentType: mime, upsert: false),
           );
-      return supabase.storage.from('shop-images').getPublicUrl(name);
+      return (
+        url: supabase.storage.from('shop-images').getPublicUrl(name),
+        path: name,
+      );
     } on StorageException {
       throw const AppException(
         'Tải ảnh thất bại. Kiểm tra mạng và quyền Storage.',
       );
     }
+  }
+
+  /// Dọn ảnh vừa tải nếu bước lưu hồ sơ DB thất bại.
+  Future<void> remove(String path) async {
+    try {
+      await supabase.storage.from('shop-images').remove([path]);
+    } catch (_) {}
   }
 }

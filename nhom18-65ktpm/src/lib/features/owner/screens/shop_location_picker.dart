@@ -134,7 +134,6 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
     setState(() {
       _selected = point;
       _fillCoordinates(point);
-      _address.clear();
     });
     unawaited(_reverseGeocode(point));
   }
