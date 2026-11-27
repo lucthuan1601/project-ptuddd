@@ -1,11 +1,98 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+/// Thông tin tuyến đường bộ thực tế (từ OSRM) hoặc đường thẳng ước tính (UC-06).
+class RouteInfo {
+  const RouteInfo({
+    required this.points,
+    required this.distanceMeters,
+    required this.durationMinutes,
+    required this.isRoadRoute,
+  });
+
+  final List<LatLng> points;
+  final double distanceMeters;
+  final int durationMinutes;
+  final bool isRoadRoute;
+}
 
 /// Hỗ trợ UC-06: Chỉ đường (Navigation) trong và ngoài ứng dụng.
 class NavigationHelper {
   NavigationHelper._();
+
+  /// Phân tích phản hồi JSON của OSRM Route API (GeoJSON).
+  static RouteInfo? parseOsrmRoute(Map<String, dynamic> json) {
+    final routes = json['routes'];
+    if (routes is! List || routes.isEmpty) return null;
+    final first = routes.first;
+    if (first is! Map<String, dynamic>) return null;
+
+    final geometry = first['geometry'];
+    if (geometry is! Map<String, dynamic>) return null;
+    final coords = geometry['coordinates'];
+    if (coords is! List || coords.length < 2) return null;
+
+    final points = <LatLng>[];
+    for (final item in coords) {
+      if (item is List && item.length >= 2 && item[0] is num && item[1] is num) {
+        // GeoJSON trả [longitude, latitude]
+        points.add(LatLng((item[1] as num).toDouble(), (item[0] as num).toDouble()));
+      }
+    }
+    if (points.length < 2) return null;
+
+    final distanceMeters = (first['distance'] as num?)?.toDouble() ?? 0;
+    final durationSeconds = (first['duration'] as num?)?.toDouble() ?? 0;
+    final minutes = durationSeconds > 0
+        ? math.max(1, (durationSeconds / 60).ceil())
+        : estimateMotorbikeMinutes(distanceMeters);
+
+    return RouteInfo(
+      points: points,
+      distanceMeters: distanceMeters,
+      durationMinutes: minutes,
+      isRoadRoute: true,
+    );
+  }
+
+  /// Lấy tuyến đường bộ thực tế từ dịch vụ OSRM công khai (miễn phí, không cần key).
+  /// Trả `null` nếu mạng yếu hoặc timeout để màn hình chuyển sang đường thẳng dự phòng.
+  static Future<RouteInfo?> fetchRoadRoute({
+    required double originLat,
+    required double originLng,
+    required double destinationLat,
+    required double destinationLng,
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
+    final uri = Uri.parse(
+      'https://router.project-osrm.org/route/v1/driving/'
+      '$originLng,$originLat;$destinationLng,$destinationLat'
+      '?overview=full&geometries=geojson',
+    );
+
+    final client = HttpClient()..connectionTimeout = timeout;
+    try {
+      final request = await client.getUrl(uri).timeout(timeout);
+      request.headers.set(HttpHeaders.userAgentHeader, 'FixMotoApp/1.0');
+      final response = await request.close().timeout(timeout);
+      if (response.statusCode != HttpStatus.ok) return null;
+
+      final body = await response.transform(utf8.decoder).join().timeout(timeout);
+      final decoded = jsonDecode(body);
+      if (decoded is! Map<String, dynamic>) return null;
+      return parseOsrmRoute(decoded);
+    } catch (_) {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
 
   /// Mở ứng dụng Google Maps ngoài để điều hướng rẽ theo từng chặng (Turn-by-turn navigation)
   static Future<bool> openExternalGoogleMaps({

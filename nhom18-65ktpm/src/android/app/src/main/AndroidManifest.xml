@@ -8,10 +8,6 @@
         android:label="Cứu hộ Xe máy"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <!-- TODO: thay key that tu Google Cloud Console truoc khi test ban do. -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="YOUR_GOOGLE_MAPS_API_KEY"/>
         <!-- FCM: thong bao SOS dung kenh tao trong MainActivity -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"

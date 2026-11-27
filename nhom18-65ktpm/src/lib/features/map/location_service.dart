@@ -1,6 +1,6 @@
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 
 /// Kết quả định vị kèm thông tin trạng thái GPS và quyền truy cập (UC-02).
 class LocationResult {

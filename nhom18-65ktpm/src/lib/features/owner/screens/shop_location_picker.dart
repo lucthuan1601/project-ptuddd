@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../repositories/auth_repository.dart';
+import '../../map/widgets/app_map_view.dart';
 import '../data/shop_location_rules.dart';
 
 class ShopPickedLocation {
@@ -21,10 +23,16 @@ class ShopLocationPicker extends StatefulWidget {
     super.key,
     this.initialPosition,
     this.initialAddress,
+    this.title = 'Ghim vị trí tiệm',
+    this.markerTitle = 'Vị trí tiệm',
+    this.requireAddress = true,
   });
 
   final LatLng? initialPosition;
   final String? initialAddress;
+  final String title;
+  final String markerTitle;
+  final bool requireAddress;
 
   @override
   State<ShopLocationPicker> createState() => _ShopLocationPickerState();
@@ -40,7 +48,8 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
   final _longitude = TextEditingController();
   final _address = TextEditingController();
   final _search = TextEditingController();
-  GoogleMapController? _controller;
+  final MapController _controller = MapController();
+  bool _mapReady = false;
   LatLng? _selected;
   bool _busyGps = false;
   bool _busySearch = false;
@@ -64,7 +73,7 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _controller.dispose();
     _latitude.dispose();
     _longitude.dispose();
     _address.dispose();
@@ -148,7 +157,9 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
       return;
     }
     _select(point, manual: manual);
-    await _controller?.animateCamera(CameraUpdate.newLatLngZoom(point, 16));
+    if (_mapReady) {
+      _controller.move(point, 16);
+    }
   }
 
   Future<void> _useGps() async {
@@ -178,6 +189,13 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
         ),
       );
       if (!mounted || _manualVersion != version) return;
+      if (ShopLocationRules.validateCoordinates(p.latitude, p.longitude) !=
+          null) {
+        _message(
+          'GPS thiết bị đang ở ngoài Việt Nam — hãy chạm trực tiếp lên bản đồ để đặt ghim.',
+        );
+        return;
+      }
       await _moveTo(LatLng(p.latitude, p.longitude), manual: false);
     } on AppException catch (e) {
       _message(e.message);
@@ -239,14 +257,18 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
       _message(error);
       return;
     }
-    if (_address.text.trim().isEmpty) {
+    final address = _address.text.trim();
+    if (widget.requireAddress && address.isEmpty) {
       _message('Vui lòng nhập địa chỉ tiệm trước khi xác nhận.');
       return;
     }
+    final resolvedAddress = address.isNotEmpty
+        ? address
+        : '${latitude!.toStringAsFixed(5)}, ${longitude!.toStringAsFixed(5)}';
     Navigator.of(context).pop(
       ShopPickedLocation(
         position: LatLng(latitude!, longitude!),
-        address: _address.text.trim(),
+        address: resolvedAddress,
       ),
     );
   }
@@ -255,44 +277,79 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
   Widget build(BuildContext context) {
     final selected = _selected;
     return Scaffold(
-      appBar: AppBar(title: const Text('Ghim vị trí tiệm')),
+      appBar: AppBar(title: Text(widget.title)),
       body: Column(
         children: [
           Expanded(
-            child: GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: widget.initialPosition ?? _defaultCenter,
-                zoom: 14,
-              ),
-              onMapCreated: (controller) {
-                _controller = controller;
-                if (_selected != null) {
-                  unawaited(
-                    controller.animateCamera(
-                      CameraUpdate.newLatLngZoom(_selected!, 16),
-                    ),
-                  );
-                }
-              },
-              onTap: _select,
-              markers: selected == null
-                  ? <Marker>{}
-                  : <Marker>{
-                      Marker(
-                        markerId: const MarkerId('shop'),
-                        position: selected,
-                        draggable: true,
-                        onDragEnd: _select,
-                        infoWindow: const InfoWindow(title: 'Vị trí tiệm'),
+            child: Stack(
+              children: [
+                AppMapView(
+                  mapController: _controller,
+                  initialCenter: widget.initialPosition ?? _defaultCenter,
+                  initialZoom: widget.initialPosition != null ? 16.0 : 14.5,
+                  showZoomButtons: true,
+                  onMapReady: () {
+                    _mapReady = true;
+                    if (_selected != null && widget.initialPosition == null) {
+                      _controller.move(_selected!, 16);
+                    }
+                  },
+                  onTap: _select,
+                  markers: selected == null
+                      ? const []
+                      : [
+                          Marker(
+                            point: selected,
+                            width: 170,
+                            height: 76,
+                            alignment: Alignment.bottomCenter,
+                            child: buildMapPin(
+                              color: const Color(0xFFD32F2F),
+                              icon: Icons.location_on,
+                              selected: true,
+                              label: widget.markerTitle,
+                            ),
+                          ),
+                        ],
+                ),
+                Positioned(
+                  top: 10,
+                  left: 12,
+                  right: 12,
+                  child: Center(
+                    child: IgnorePointer(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.12),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Text(
+                          'Chạm vào bản đồ để đặt ghim vị trí',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
-                    },
-              zoomControlsEnabled: true,
-              myLocationButtonEnabled: false,
-              mapToolbarEnabled: false,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 350),
+            constraints: const BoxConstraints(maxHeight: 360),
             child: ListView(
               shrinkWrap: true,
               padding: const EdgeInsets.all(12),
@@ -315,6 +372,7 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
@@ -340,6 +398,7 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
                 if (_busyAddress) const LinearProgressIndicator(),
                 TextField(
                   controller: _address,
@@ -348,9 +407,10 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
                   ),
                   maxLines: 2,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
+                  runSpacing: 8,
                   children: [
                     OutlinedButton.icon(
                       onPressed: _applyCoordinates,
@@ -366,6 +426,7 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 10),
                 FilledButton.icon(
                   onPressed: _confirm,
                   icon: const Icon(Icons.check),
