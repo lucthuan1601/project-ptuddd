@@ -180,7 +180,7 @@ begin
   end;
 
   if v_row.id is null then
-    raise exception 'Ca cứu hộ đã được người khác nhận hoặc không còn hiệu lực';
+    raise exception 'Ca cứu hộ này đã được người khác tiếp nhận hoặc không còn hiệu lực';
   end if;
 
   return v_row;

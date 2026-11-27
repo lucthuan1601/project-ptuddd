@@ -102,7 +102,7 @@ class _SosInboxState extends State<SosInbox> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Ca cứu hộ đã được người khác tiếp nhận hoặc đã bị hủy',
+            'Ca cứu hộ này đã được người khác tiếp nhận hoặc đã bị hủy',
           ),
         ),
       );
