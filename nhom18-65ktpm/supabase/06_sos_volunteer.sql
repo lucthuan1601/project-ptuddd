@@ -223,6 +223,7 @@ as $$
            st_setsrid(st_makepoint(r.longitude, r.latitude), 4326)::geography as point
       from public.sos_requests r
      where r.status = 'pending'
+       and r.created_at > now() - interval '5 minutes'
        and r.rider_id <> auth.uid()
   ),
   candidates as (
