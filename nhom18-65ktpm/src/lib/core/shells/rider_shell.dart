@@ -7,6 +7,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/supabase_client.dart';
+import '../../core/theme.dart';
+import '../../core/widgets/hci_components.dart';
 import '../../features/call/call_helper.dart';
 import '../../features/map/location_service.dart';
 import '../../features/map/widgets/app_map_view.dart';
@@ -17,7 +19,6 @@ import '../../features/shop/widgets/shop_carousel.dart';
 import '../../features/shop/widgets/shop_filter_bar.dart';
 import '../../features/sos/screens/sos_request_screen.dart';
 import '../../models/shop.dart';
-import '../../repositories/auth_repository.dart';
 import '../../repositories/shop_repository.dart';
 
 /// Màn hình chính phân hệ Khách hàng (Rider), tích hợp UC-02 → UC-08.
@@ -333,38 +334,74 @@ class _RiderShellState extends State<RiderShell> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
+                      color: Colors.white.withValues(alpha: 0.96),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppColors.border),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
+                          color: AppColors.navyDeep.withValues(alpha: 0.10),
+                          blurRadius: 14,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.my_location, color: Color(0xFF1E88E5), size: 20),
-                        const SizedBox(width: 8),
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: _locationDenied
+                                ? AppColors.warningBg
+                                : AppColors.infoBg,
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Icon(
+                            _locationDenied
+                                ? Icons.location_off_rounded
+                                : Icons.my_location_rounded,
+                            color: _locationDenied
+                                ? AppColors.warning
+                                : AppColors.primary,
+                            size: 19,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Vị trí hiện tại của bạn',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey),
+                              Row(
+                                children: [
+                                  LiveStatusDot(
+                                    color: _locationDenied
+                                        ? AppColors.warning
+                                        : AppColors.success,
+                                    size: 6,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Text(
+                                    'Vị trí hiện tại của bạn',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.inkSecondary,
+                                    ),
+                                  ),
+                                ],
                               ),
+                              const SizedBox(height: 1),
                               Text(
                                 _currentAddress,
                                 style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.inkPrimary,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -379,14 +416,24 @@ class _RiderShellState extends State<RiderShell> {
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
-                              : const Icon(Icons.refresh, size: 20),
+                              : const Icon(
+                                  Icons.refresh_rounded,
+                                  size: 20,
+                                  color: AppColors.primary,
+                                ),
                         ),
                         IconButton(
                           tooltip: 'Đăng xuất',
-                          onPressed: () => AuthRepository().signOut(),
-                          icon: const Icon(Icons.logout, size: 20, color: Colors.grey),
+                          onPressed: () => confirmAndSignOut(context),
+                          icon: const Icon(
+                            Icons.logout_rounded,
+                            size: 20,
+                            color: AppColors.inkSecondary,
+                          ),
                         ),
                       ],
                     ),
@@ -480,36 +527,31 @@ class _RiderShellState extends State<RiderShell> {
               ),
             ),
 
-          // 5. Nút SOS khẩn cấp đặt phía trên carousel, không che thẻ tiệm
+          // 5. Nút SOS khẩn cấp nổi bật có quầng sáng nhận diện nhanh (Fitts's Law)
           Positioned(
             left: 16,
-            bottom: _locationDenied ? 24 : 176,
-            child: FloatingActionButton.extended(
-              heroTag: 'sos_fab',
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-              onPressed: _openSosScreen,
-              icon: const Icon(Icons.sos),
-              label: const Text(
-                'CỨU HỘ SOS',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
+            bottom: _locationDenied ? 24 : 182,
+            child: _PulsingSosFab(onPressed: _openSosScreen),
           ),
 
           // 6. Nút định vị GPS "Vị trí của tôi"
           Positioned(
             right: 16,
-            bottom: _locationDenied ? 28 : 180,
+            bottom: _locationDenied ? 28 : 186,
             child: FloatingActionButton.small(
               heroTag: 'my_location_fab',
+              elevation: 3,
               backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF1E88E5),
+              foregroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: const BorderSide(color: AppColors.border),
+              ),
               onPressed: _locationDenied
                   ? _initLocationAndShops
                   : () => _animateCameraTo(_currentLocation),
               tooltip: 'Vị trí của tôi',
-              child: const Icon(Icons.my_location),
+              child: const Icon(Icons.my_location_rounded),
             ),
           ),
         ],
@@ -582,6 +624,68 @@ class _RiderShellState extends State<RiderShell> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Nút Cứu hộ SOS có hiệu ứng nhịp sáng nhẹ giúp người gặp sự cố nhận diện tức thì.
+class _PulsingSosFab extends StatefulWidget {
+  const _PulsingSosFab({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  State<_PulsingSosFab> createState() => _PulsingSosFabState();
+}
+
+class _PulsingSosFabState extends State<_PulsingSosFab>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, child) {
+        final glow = disableAnimations ? 0.25 : 0.18 + 0.22 * _pulse.value;
+        final spread = disableAnimations ? 2.0 : 1.0 + 4.5 * _pulse.value;
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.sosRed.withValues(alpha: glow),
+                blurRadius: 16,
+                spreadRadius: spread,
+              ),
+            ],
+          ),
+          child: child,
+        );
+      },
+      child: FloatingActionButton.extended(
+        heroTag: 'sos_fab',
+        elevation: 4,
+        backgroundColor: AppColors.sosRed,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        onPressed: widget.onPressed,
+        icon: const Icon(Icons.sos_rounded),
+        label: const Text(
+          'CỨU HỘ SOS',
+          style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.4),
+        ),
       ),
     );
   }
