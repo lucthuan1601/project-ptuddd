@@ -17,6 +17,10 @@ import 'shells/owner_shell.dart';
 import 'shells/rider_shell.dart';
 import 'shells/volunteer_shell.dart';
 import 'supabase_client.dart';
+import 'theme.dart';
+import 'widgets/animated_moto_logo.dart';
+import 'widgets/auth_backdrop.dart';
+import 'widgets/hci_components.dart';
 
 /// Nghe phiên đăng nhập, tải hồ sơ, đăng ký FCM và điều hướng theo vai trò (UC-01).
 class AuthGate extends StatefulWidget {
@@ -163,7 +167,69 @@ class _Splash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return Scaffold(
+      body: AuthBackdrop(
+        heroFraction: 0.56,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const AnimatedMotoLogo(
+                badgeSize: 84,
+                trackWidth: 240,
+                interactive: false,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Kết nối & Tình nguyện xe máy',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.navyDeep.withValues(alpha: 0.14),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2.2),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Đang tải hồ sơ của bạn...',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.inkPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -175,21 +241,24 @@ class _LoadError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, size: 56),
-              const SizedBox(height: 12),
-              Text(message, textAlign: TextAlign.center),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: () => AuthRepository().signOut(),
-                child: const Text('Đăng xuất'),
+      body: AuthBackdrop(
+        heroFraction: 0.34,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Card(
+              child: EmptyStateCard(
+                icon: Icons.error_outline_rounded,
+                title: 'Không tải được hồ sơ',
+                message: message,
+                accentColor: AppColors.sosRed,
+                action: FilledButton.icon(
+                  onPressed: () => AuthRepository().signOut(),
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text('Đăng xuất'),
+                ),
               ),
-            ],
+            ),
           ),
         ),
       ),
