@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
 import '../../../models/shop.dart';
 import 'shop_card_item.dart';
 
@@ -29,36 +30,54 @@ class ShopCarousel extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: Colors.white.withValues(alpha: 0.97),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
+              color: AppColors.navyDeep.withValues(alpha: 0.10),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.search_off, size: 36, color: Colors.orange),
-            const SizedBox(height: 6),
-            const Text(
-              'Không tìm thấy địa điểm nào quanh bạn trong bán kính này.',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              textAlign: TextAlign.center,
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.motoOrange.withValues(alpha: 0.12),
+              ),
+              child: const Icon(
+                Icons.search_off_rounded,
+                size: 26,
+                color: AppColors.motoOrange,
+              ),
             ),
             const SizedBox(height: 8),
+            const Text(
+              'Không tìm thấy địa điểm nào quanh bạn trong bán kính này.',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.inkPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
             if (onExpandRadius != null)
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E88E5),
+                  backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
-                  visualDensity: VisualDensity.compact,
+                  minimumSize: const Size(0, 38),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                 ),
                 onPressed: onExpandRadius,
-                icon: const Icon(Icons.zoom_out_map, size: 16),
+                icon: const Icon(Icons.zoom_out_map_rounded, size: 17),
                 label: const Text('Mở rộng bán kính tìm kiếm'),
               ),
           ],
@@ -67,7 +86,7 @@ class ShopCarousel extends StatelessWidget {
     }
 
     return SizedBox(
-      height: 145,
+      height: 152,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 10),

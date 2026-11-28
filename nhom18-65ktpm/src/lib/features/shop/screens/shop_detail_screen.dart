@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../models/review.dart';
 import '../../../models/shop.dart';
 import '../../../repositories/shop_repository.dart';
@@ -368,23 +370,64 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
   Widget _buildPlaceholderImage() {
     final isRepair = _shop.category == 'repair_shop';
     return Container(
-      height: 180,
+      height: 196,
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isRepair
-              ? [const Color(0xFFF57C00), const Color(0xFFFFB74D)]
-              : [const Color(0xFF1976D2), const Color(0xFF64B5F6)],
+              ? [const Color(0xFFEA580C), AppColors.motoAmber]
+              : [AppColors.navyBrand, AppColors.primaryLight],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
-      child: Center(
-        child: Icon(
-          isRepair ? Icons.build_circle : Icons.local_gas_station,
-          size: 72,
-          color: Colors.white.withValues(alpha: 0.85),
-        ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned(
+            right: -30,
+            top: -30,
+            child: Container(
+              width: 140,
+              height: 140,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.12),
+              ),
+            ),
+          ),
+          Positioned(
+            left: -20,
+            bottom: -40,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+          Container(
+            width: 88,
+            height: 88,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.35),
+                width: 1.5,
+              ),
+            ),
+            child: Icon(
+              isRepair
+                  ? Icons.build_circle_rounded
+                  : Icons.local_gas_station_rounded,
+              size: 50,
+              color: Colors.white,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -395,14 +438,27 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     required Color color,
   }) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 20, color: color),
-        const SizedBox(width: 8),
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+        const SizedBox(width: 12),
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(fontSize: 14, height: 1.3),
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.35,
+              color: AppColors.inkPrimary,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],
@@ -417,32 +473,38 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
             Expanded(
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: AppColors.success,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 onPressed: _onCall,
-                icon: const Icon(Icons.phone),
-                label: const Text('Gọi ngay', style: TextStyle(fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.phone_rounded),
+                label: const Text(
+                  'Gọi ngay',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E88E5),
+                  backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 onPressed: _onNavigate,
-                icon: const Icon(Icons.navigation),
-                label: const Text('Chỉ đường', style: TextStyle(fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.navigation_rounded),
+                label: const Text(
+                  'Chỉ đường',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ),
           ],
@@ -453,15 +515,18 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
             Expanded(
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red[700],
-                  side: BorderSide(color: Colors.red[300]!),
+                  backgroundColor: AppColors.dangerBg,
+                  foregroundColor: AppColors.sosRedDark,
+                  side: BorderSide(
+                    color: AppColors.sosRed.withValues(alpha: 0.35),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 onPressed: _onSendSos,
-                icon: const Icon(Icons.warning, color: Colors.red),
+                icon: const Icon(Icons.sos_rounded, color: AppColors.sosRed),
                 label: const Text('Cứu hộ SOS'),
               ),
             ),
@@ -469,15 +534,21 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
             Expanded(
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.amber[900],
-                  side: BorderSide(color: Colors.amber[400]!),
+                  backgroundColor: AppColors.warningBg,
+                  foregroundColor: const Color(0xFF92400E),
+                  side: BorderSide(
+                    color: AppColors.warning.withValues(alpha: 0.4),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 onPressed: _onWriteReview,
-                icon: const Icon(Icons.star_outline, color: Colors.amber),
+                icon: const Icon(
+                  Icons.star_rounded,
+                  color: Color(0xFFD97706),
+                ),
                 label: const Text('Đánh giá'),
               ),
             ),
@@ -512,27 +583,18 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> {
     }
 
     if (_reviews.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(Icons.rate_review_outlined, size: 40, color: Colors.grey[400]),
-            const SizedBox(height: 8),
-            Text(
-              'Chưa có đánh giá nào cho tiệm này.',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Hãy là người đầu tiên để lại đánh giá dịch vụ!',
-              style: TextStyle(color: Colors.grey[500], fontSize: 12),
-            ),
-          ],
+      return Card(
+        margin: EdgeInsets.zero,
+        child: EmptyStateCard(
+          icon: Icons.rate_review_outlined,
+          title: 'Chưa có đánh giá nào',
+          message: 'Hãy là người đầu tiên để lại đánh giá dịch vụ cho tiệm này!',
+          accentColor: AppColors.primary,
+          action: OutlinedButton.icon(
+            onPressed: _onWriteReview,
+            icon: const Icon(Icons.star_outline_rounded),
+            label: const Text('Viết đánh giá đầu tiên'),
+          ),
         ),
       );
     }

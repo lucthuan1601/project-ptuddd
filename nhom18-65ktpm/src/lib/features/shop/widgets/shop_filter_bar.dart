@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
 import '../shop_filter.dart';
 
 /// Bộ lọc tìm kiếm, bán kính và sắp xếp tiệm sửa xe & cây xăng (UC-03).
@@ -58,17 +59,18 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
+            color: AppColors.navyDeep.withValues(alpha: 0.10),
+            blurRadius: 14,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -76,14 +78,24 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
           TextField(
             controller: _controller,
             onChanged: widget.onSearchChanged,
+            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
             decoration: InputDecoration(
+              filled: true,
+              fillColor: AppColors.surfaceMuted,
               hintText: 'Tìm tên tiệm, chủ tiệm, tên đường...',
-              hintStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
-              prefixIcon: const Icon(Icons.search, size: 20),
+              hintStyle: const TextStyle(
+                fontSize: 13,
+                color: AppColors.inkMuted,
+              ),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                size: 20,
+                color: AppColors.primary,
+              ),
               suffixIcon: widget.searchQuery.isNotEmpty
                   ? IconButton(
                       tooltip: 'Xóa tìm kiếm',
-                      icon: const Icon(Icons.close, size: 18),
+                      icon: const Icon(Icons.close_rounded, size: 18),
                       onPressed: () {
                         _controller.clear();
                         widget.onSearchChanged('');
@@ -91,18 +103,25 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
                     )
                   : null,
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.border),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: Colors.grey[200]!),
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(
+                  color: AppColors.primary,
+                  width: 1.5,
+                ),
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           // Hàng lọc danh mục, bán kính, trạng thái mở cửa & sắp xếp
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -111,22 +130,25 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
                 _buildCategoryChip(
                   label: 'Tất cả',
                   category: null,
-                  icon: Icons.apps,
+                  icon: Icons.apps_rounded,
+                  activeColor: AppColors.primary,
                 ),
                 const SizedBox(width: 6),
                 _buildCategoryChip(
                   label: 'Tiệm sửa xe',
                   category: 'repair_shop',
-                  icon: Icons.build,
+                  icon: Icons.build_rounded,
+                  activeColor: AppColors.motoOrange,
                 ),
                 const SizedBox(width: 6),
                 _buildCategoryChip(
                   label: 'Cây xăng',
                   category: 'gas_station',
-                  icon: Icons.local_gas_station,
+                  icon: Icons.local_gas_station_rounded,
+                  activeColor: AppColors.primaryLight,
                 ),
                 const SizedBox(width: 8),
-                Container(height: 18, width: 1, color: Colors.grey[300]),
+                Container(height: 18, width: 1, color: AppColors.border),
                 const SizedBox(width: 8),
                 // Bán kính
                 ...[1000, 3000, 5000, 10000].map((radius) {
@@ -134,44 +156,70 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: ChoiceChip(
-                      label: Text('${radius ~/ 1000} km', style: const TextStyle(fontSize: 12)),
+                      label: Text(
+                        '${radius ~/ 1000} km',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: isSelected
+                              ? AppColors.navyBrand
+                              : AppColors.inkSecondary,
+                        ),
+                      ),
                       selected: isSelected,
+                      showCheckmark: false,
                       onSelected: (_) => widget.onRadiusChanged(radius),
-                      selectedColor: const Color(0xFFE3F2FD),
+                      selectedColor: AppColors.infoBg,
+                      side: BorderSide(
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.border,
+                      ),
                       visualDensity: VisualDensity.compact,
                     ),
                   );
                 }),
                 const SizedBox(width: 4),
-                // Switch chỉ hiển thị tiệm đang mở
+                // Lọc chỉ hiển thị tiệm đang mở
                 FilterChip(
                   avatar: Icon(
-                    Icons.access_time_filled,
-                    size: 16,
-                    color: widget.isOpenOnly ? Colors.white : Colors.green[700],
+                    Icons.access_time_filled_rounded,
+                    size: 15,
+                    color: widget.isOpenOnly ? Colors.white : AppColors.success,
                   ),
                   label: Text(
                     'Đang mở',
                     style: TextStyle(
                       fontSize: 12,
-                      color: widget.isOpenOnly ? Colors.white : Colors.black87,
-                      fontWeight: widget.isOpenOnly ? FontWeight.bold : FontWeight.normal,
+                      color: widget.isOpenOnly
+                          ? Colors.white
+                          : AppColors.inkPrimary,
+                      fontWeight: widget.isOpenOnly
+                          ? FontWeight.w700
+                          : FontWeight.w500,
                     ),
                   ),
                   selected: widget.isOpenOnly,
-                  selectedColor: Colors.green[600],
+                  selectedColor: AppColors.success,
                   checkmarkColor: Colors.white,
+                  side: BorderSide(
+                    color: widget.isOpenOnly
+                        ? AppColors.success
+                        : AppColors.border,
+                  ),
                   onSelected: widget.onOpenOnlyChanged,
                   visualDensity: VisualDensity.compact,
                 ),
                 if (widget.onSortChanged != null) ...[
                   const SizedBox(width: 8),
-                  Container(height: 18, width: 1, color: Colors.grey[300]),
+                  Container(height: 18, width: 1, color: AppColors.border),
                   const SizedBox(width: 8),
                   _buildSortChip(
                     label: 'Gần nhất',
                     sort: ShopSort.nearest,
-                    icon: Icons.near_me,
+                    icon: Icons.near_me_rounded,
                   ),
                   const SizedBox(width: 6),
                   _buildSortChip(
@@ -192,21 +240,28 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
     required String label,
     required String? category,
     required IconData icon,
+    required Color activeColor,
   }) {
     final isSelected = widget.selectedCategory == category;
     return ChoiceChip(
-      avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.blueGrey),
+      avatar: Icon(
+        icon,
+        size: 15,
+        color: isSelected ? Colors.white : activeColor,
+      ),
       label: Text(
         label,
         style: TextStyle(
           fontSize: 12,
-          color: isSelected ? Colors.white : Colors.black87,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected ? Colors.white : AppColors.inkPrimary,
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
         ),
       ),
       selected: isSelected,
+      showCheckmark: false,
       onSelected: (_) => widget.onCategoryChanged(category),
-      selectedColor: const Color(0xFF1E88E5),
+      selectedColor: activeColor,
+      side: BorderSide(color: isSelected ? activeColor : AppColors.border),
       visualDensity: VisualDensity.compact,
     );
   }
@@ -220,20 +275,24 @@ class _ShopFilterBarState extends State<ShopFilterBar> {
     return ChoiceChip(
       avatar: Icon(
         icon,
-        size: 16,
-        color: isSelected ? Colors.white : Colors.amber[800],
+        size: 15,
+        color: isSelected ? Colors.white : const Color(0xFFD97706),
       ),
       label: Text(
         label,
         style: TextStyle(
           fontSize: 12,
-          color: isSelected ? Colors.white : Colors.black87,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected ? Colors.white : AppColors.inkPrimary,
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
         ),
       ),
       selected: isSelected,
+      showCheckmark: false,
       onSelected: (_) => widget.onSortChanged?.call(sort),
-      selectedColor: const Color(0xFF1565C0),
+      selectedColor: AppColors.navyBrand,
+      side: BorderSide(
+        color: isSelected ? AppColors.navyBrand : AppColors.border,
+      ),
       visualDensity: VisualDensity.compact,
     );
   }

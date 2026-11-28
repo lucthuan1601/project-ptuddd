@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../repositories/auth_repository.dart';
 import '../data/supabase_review_repository.dart';
 import '../review_rules.dart';
@@ -111,6 +113,15 @@ class _ReviewFormState extends State<ReviewForm> {
     }
   }
 
+  String _ratingCaption(int? rating) => switch (rating) {
+    1 => 'Rất chưa hài lòng',
+    2 => 'Cần cải thiện',
+    3 => 'Ổn, chấp nhận được',
+    4 => 'Dịch vụ tốt',
+    5 => 'Tuyệt vời, rất hài lòng!',
+    _ => 'Chạm vào số sao để đánh giá',
+  };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -126,29 +137,63 @@ class _ReviewFormState extends State<ReviewForm> {
           style: theme.textTheme.titleLarge,
         ),
         const SizedBox(height: 4),
-        Text(widget.shopName, style: theme.textTheme.bodyMedium),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            for (var star = 1; star <= 5; star++)
-              IconButton(
-                tooltip: '$star sao',
-                iconSize: 36,
-                onPressed: _sending
-                    ? null
-                    : () => setState(() {
-                        _rating = star;
-                        _error = null;
-                      }),
-                icon: Icon(
-                  star <= (_rating ?? 0) ? Icons.star : Icons.star_border,
-                  color: Colors.amber.shade700,
+        Text(
+          widget.shopName,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: AppColors.inkSecondary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceMuted,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var star = 1; star <= 5; star++)
+                    AnimatedScale(
+                      scale: star <= (_rating ?? 0) ? 1.12 : 1.0,
+                      duration: const Duration(milliseconds: 160),
+                      child: IconButton(
+                        tooltip: '$star sao',
+                        iconSize: 36,
+                        onPressed: _sending
+                            ? null
+                            : () => setState(() {
+                                _rating = star;
+                                _error = null;
+                              }),
+                        icon: Icon(
+                          star <= (_rating ?? 0)
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
+                          color: const Color(0xFFD97706),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              Text(
+                _ratingCaption(_rating),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: _rating == null
+                      ? AppColors.inkMuted
+                      : const Color(0xFFB45309),
                 ),
               ),
-          ],
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         TextField(
           controller: _comment,
           enabled: !_sending,
@@ -156,21 +201,26 @@ class _ReviewFormState extends State<ReviewForm> {
           maxLength: reviewCommentMaxLength,
           decoration: const InputDecoration(
             labelText: 'Nhận xét (không bắt buộc)',
+            hintText: 'Chia sẻ trải nghiệm sửa xe, thái độ phục vụ, giá cả...',
           ),
         ),
         if (_error != null) ...[
-          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-          const SizedBox(height: 8),
+          FeedbackBanner(message: _error!, tone: FeedbackTone.error),
+          const SizedBox(height: 10),
         ],
-        FilledButton(
+        FilledButton.icon(
           onPressed: _sending ? null : _submit,
-          child: _sending
+          icon: _sending
               ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
-              : const Text('Gửi đánh giá'),
+              : const Icon(Icons.send_rounded, size: 18),
+          label: const Text('Gửi đánh giá'),
         ),
       ],
     );

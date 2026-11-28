@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../models/shop.dart';
 import '../../navigation/navigation_helper.dart';
 
@@ -23,28 +25,30 @@ class ShopCardItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isRepair = shop.category == 'repair_shop';
+    final accent = isRepair ? AppColors.motoOrange : AppColors.primary;
 
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        width: 310,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        width: 316,
         margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(13),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? const Color(0xFF1E88E5) : Colors.grey[200]!,
+            color: isSelected ? AppColors.primary : AppColors.border,
             width: isSelected ? 2 : 1,
           ),
           boxShadow: [
             BoxShadow(
               color: isSelected
-                  ? const Color(0xFF1E88E5).withValues(alpha: 0.25)
-                  : Colors.black.withValues(alpha: 0.08),
-              blurRadius: isSelected ? 12 : 6,
-              offset: const Offset(0, 3),
+                  ? AppColors.primary.withValues(alpha: 0.22)
+                  : AppColors.navyDeep.withValues(alpha: 0.09),
+              blurRadius: isSelected ? 16 : 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -52,17 +56,23 @@ class ShopCardItem extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Dòng trên: Icon thể loại, tên, badge mở/đóng
+            // Dòng trên: Biểu tượng thể loại, tên tiệm & địa chỉ
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor:
-                      isRepair ? Colors.orange[100] : Colors.blue[100],
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: accent.withValues(alpha: 0.22)),
+                  ),
                   child: Icon(
-                    isRepair ? Icons.build : Icons.local_gas_station,
-                    color: isRepair ? Colors.orange[800] : Colors.blue[800],
+                    isRepair
+                        ? Icons.build_rounded
+                        : Icons.local_gas_station_rounded,
+                    color: accent,
                     size: 20,
                   ),
                 ),
@@ -74,8 +84,9 @@ class ShopCardItem extends StatelessWidget {
                       Text(
                         shop.name,
                         style: const TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w800,
                           fontSize: 14.5,
+                          color: AppColors.inkPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -83,7 +94,10 @@ class ShopCardItem extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         shop.address,
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                        style: const TextStyle(
+                          color: AppColors.inkSecondary,
+                          fontSize: 12,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -93,89 +107,144 @@ class ShopCardItem extends StatelessWidget {
               ],
             ),
 
-            // Dòng giữa: Khoảng cách, Rating, Giờ mở cửa
+            // Dòng giữa: Khoảng cách, trạng thái Mở/Đóng & điểm đánh giá
             Row(
               children: [
                 if (shop.distanceM != null) ...[
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(6),
+                      color: AppColors.infoBg,
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       NavigationHelper.formatDistance(shop.distanceM!),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue[800],
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.navyBrand,
                       ),
                     ),
                   ),
                   const SizedBox(width: 6),
                 ],
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: shop.isOpen ? Colors.green[50] : Colors.red[50],
-                    borderRadius: BorderRadius.circular(6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
                   ),
-                  child: Text(
-                    shop.isOpen ? 'Mở cửa' : 'Đóng cửa',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: shop.isOpen ? Colors.green[800] : Colors.red[800],
-                    ),
+                  decoration: BoxDecoration(
+                    color: shop.isOpen ? AppColors.successBg : AppColors.dangerBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      LiveStatusDot(
+                        color: shop.isOpen ? AppColors.success : AppColors.sosRed,
+                        size: 6,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        shop.isOpen ? 'Mở cửa' : 'Đóng cửa',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: shop.isOpen
+                              ? const Color(0xFF047857)
+                              : const Color(0xFFB91C1C),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const Spacer(),
-                const Icon(Icons.star, size: 15, color: Colors.amber),
-                const SizedBox(width: 2),
-                Text(
-                  shop.rating.toStringAsFixed(1),
-                  style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.bold),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.warningBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.star_rounded,
+                        size: 15,
+                        color: Color(0xFFD97706),
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        shop.rating.toStringAsFixed(1),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF92400E),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
 
-            // Dòng dưới: 2 nút hành động nhanh
+            // Dòng dưới: 2 nút thao tác nhanh (Fitts's Law: rộng & tách biệt rõ)
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 36),
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       visualDensity: VisualDensity.compact,
-                      side: BorderSide(color: Colors.green[400]!),
-                      foregroundColor: Colors.green[800],
+                      side: BorderSide(
+                        color: AppColors.success.withValues(alpha: 0.45),
+                      ),
+                      foregroundColor: const Color(0xFF047857),
+                      backgroundColor: AppColors.successBg,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                     onPressed: onCall,
-                    icon: const Icon(Icons.phone, size: 14),
-                    label: const Text('Gọi ngay', style: TextStyle(fontSize: 12)),
+                    icon: const Icon(Icons.phone_rounded, size: 15),
+                    label: const Text(
+                      'Gọi ngay',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(0, 36),
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       visualDensity: VisualDensity.compact,
-                      backgroundColor: const Color(0xFF1E88E5),
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                     onPressed: onNavigate,
-                    icon: const Icon(Icons.navigation, size: 14),
-                    label: const Text('Chỉ đường', style: TextStyle(fontSize: 12)),
+                    icon: const Icon(Icons.navigation_rounded, size: 15),
+                    label: const Text(
+                      'Chỉ đường',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ],
