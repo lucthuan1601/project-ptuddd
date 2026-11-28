@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/theme.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../models/shop.dart';
 import '../../../repositories/auth_repository.dart';
 import '../data/owner_shop_repository.dart';
@@ -243,8 +245,8 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
           if (widget.showLogout)
             IconButton(
               tooltip: 'Đăng xuất',
-              onPressed: () => AuthRepository().signOut(),
-              icon: const Icon(Icons.logout),
+              onPressed: () => confirmAndSignOut(context),
+              icon: const Icon(Icons.logout_rounded),
             ),
         ],
       ),
@@ -254,206 +256,276 @@ class _ShopEditorScreenState extends State<ShopEditorScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            if (!editing) const Text('Hồ sơ mới sẽ chờ Admin phê duyệt.'),
-            if (approved)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'Nếu thay tên, loại hình hoặc vị trí, tiệm sẽ chờ phê duyệt lại.',
+            if (!editing) ...[
+              const FeedbackBanner(
+                message: 'Hồ sơ mới sẽ chờ Admin phê duyệt trước khi hiển thị trên bản đồ.',
+                tone: FeedbackTone.info,
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (approved) ...[
+              const FeedbackBanner(
+                message:
+                    'Nếu thay tên, loại hình hoặc vị trí, tiệm sẽ chuyển về trạng thái chờ phê duyệt lại.',
+                tone: FeedbackTone.warning,
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (widget.shop?.status == 'rejected') ...[
+              FeedbackBanner(
+                title: 'Hồ sơ bị từ chối',
+                message:
+                    widget.shop?.rejectionReason ?? 'Chưa có lý do cụ thể.',
+                tone: FeedbackTone.error,
+              ),
+              const SizedBox(height: 12),
+            ],
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SectionHeader(
+                      icon: Icons.storefront_rounded,
+                      title: 'Thông tin cơ sở',
+                      color: AppColors.motoOrange,
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _name,
+                      maxLength: 150,
+                      decoration: const InputDecoration(labelText: 'Tên tiệm *'),
+                      validator: (v) {
+                        final n = v?.trim().length ?? 0;
+                        return n >= 3 && n <= 150
+                            ? null
+                            : 'Tên tiệm phải từ 3 đến 150 ký tự.';
+                      },
+                    ),
+                    DropdownButtonFormField<String>(
+                      initialValue: _category,
+                      decoration: const InputDecoration(
+                        labelText: 'Loại cơ sở *',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'repair_shop',
+                          child: Text('Tiệm sửa xe'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'gas_station',
+                          child: Text('Cây xăng'),
+                        ),
+                      ],
+                      onChanged: _saving
+                          ? null
+                          : (v) {
+                              if (v != null) setState(() => _category = v);
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _phone,
+                      keyboardType: TextInputType.phone,
+                      maxLength: 10,
+                      decoration: const InputDecoration(labelText: 'Hotline *'),
+                      validator: (v) =>
+                          RegExp(r'^0[0-9]{9}$').hasMatch(v?.trim() ?? '')
+                              ? null
+                              : 'Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0.',
+                    ),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      controller: _address,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Địa chỉ (có thể sửa) *',
+                      ),
+                      validator: (v) => (v?.trim().isNotEmpty ?? false)
+                          ? null
+                          : 'Vui lòng nhập địa chỉ tiệm.',
+                    ),
+                  ],
                 ),
               ),
-            if (widget.shop?.status == 'rejected')
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'Lý do từ chối: ${widget.shop?.rejectionReason ?? 'Chưa có lý do.'}',
+            ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SectionHeader(
+                      icon: Icons.schedule_rounded,
+                      title: 'Giờ hoạt động & Vị trí bản đồ',
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _saving ? null : () => _selectTime(true),
+                            icon: const Icon(Icons.schedule),
+                            label: Text('Mở: ${_openTime.format(context)}'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _saving ? null : () => _selectTime(false),
+                            icon: const Icon(Icons.schedule),
+                            label: Text('Đóng: ${_closeTime.format(context)}'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _saving ? null : _pickLocation,
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text('Chọn vị trí trên bản đồ'),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _latitude,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Vĩ độ *',
+                            ),
+                            validator: (v) =>
+                                ShopLocationRules.validateCoordinates(
+                              double.tryParse(v?.trim() ?? ''),
+                              double.tryParse(_longitude.text.trim()),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _longitude,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Kinh độ *',
+                            ),
+                            validator: (v) =>
+                                ShopLocationRules.validateCoordinates(
+                              double.tryParse(_latitude.text.trim()),
+                              double.tryParse(v?.trim() ?? ''),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            TextFormField(
-              controller: _name,
-              maxLength: 150,
-              decoration: const InputDecoration(labelText: 'Tên tiệm *'),
-              validator: (v) {
-                final n = v?.trim().length ?? 0;
-                return n >= 3 && n <= 150
-                    ? null
-                    : 'Tên tiệm phải từ 3 đến 150 ký tự.';
-              },
             ),
-            DropdownButtonFormField<String>(
-              initialValue: _category,
-              decoration: const InputDecoration(labelText: 'Loại cơ sở *'),
-              items: const [
-                DropdownMenuItem(
-                  value: 'repair_shop',
-                  child: Text('Tiệm sửa xe'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SectionHeader(
+                      icon: Icons.photo_camera_outlined,
+                      title: 'Hình ảnh mặt tiền',
+                      color: AppColors.success,
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _saving
+                                ? null
+                                : () => _selectImage(ImageSource.camera),
+                            icon: const Icon(Icons.photo_camera),
+                            label: const Text('Chụp ảnh'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _saving
+                                ? null
+                                : () => _selectImage(ImageSource.gallery),
+                            icon: const Icon(Icons.image_outlined),
+                            label: const Text('Chọn ảnh'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_imageBytes != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.memory(
+                            _imageBytes!,
+                            height: 150,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      )
+                    else if (_imageUrl.text.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            _imageUrl.text.trim(),
+                            height: 130,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                const Text('Không hiển thị được ảnh hiện tại.'),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _imageUrl,
+                      decoration: const InputDecoration(
+                        labelText: 'URL ảnh hiện tại (tùy chọn)',
+                      ),
+                      validator: (v) {
+                        final value = v?.trim() ?? '';
+                        if (value.isEmpty) return null;
+                        final u = Uri.tryParse(value);
+                        return u != null &&
+                                u.hasAuthority &&
+                                (u.scheme == 'https' || u.scheme == 'http')
+                            ? null
+                            : 'Đường dẫn ảnh không hợp lệ.';
+                      },
+                    ),
+                  ],
                 ),
-                DropdownMenuItem(value: 'gas_station', child: Text('Cây xăng')),
-              ],
-              onChanged: _saving
-                  ? null
-                  : (v) {
-                      if (v != null) setState(() => _category = v);
-                    },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _phone,
-              keyboardType: TextInputType.phone,
-              maxLength: 10,
-              decoration: const InputDecoration(labelText: 'Hotline *'),
-              validator: (v) => RegExp(r'^0[0-9]{9}$').hasMatch(v?.trim() ?? '')
-                  ? null
-                  : 'Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0.',
+              ),
             ),
             const SizedBox(height: 6),
-            TextFormField(
-              controller: _address,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Địa chỉ (có thể sửa) *',
-              ),
-              validator: (v) => (v?.trim().isNotEmpty ?? false)
-                  ? null
-                  : 'Vui lòng nhập địa chỉ tiệm.',
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _saving ? null : () => _selectTime(true),
-                    icon: const Icon(Icons.schedule),
-                    label: Text('Mở: ${_openTime.format(context)}'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _saving ? null : () => _selectTime(false),
-                    icon: const Icon(Icons.schedule),
-                    label: Text('Đóng: ${_closeTime.format(context)}'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _saving ? null : _pickLocation,
-              icon: const Icon(Icons.map_outlined),
-              label: const Text('Chọn vị trí trên bản đồ'),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _latitude,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                      signed: true,
-                    ),
-                    decoration: const InputDecoration(labelText: 'Vĩ độ *'),
-                    validator: (v) => ShopLocationRules.validateCoordinates(
-                      double.tryParse(v?.trim() ?? ''),
-                      double.tryParse(_longitude.text.trim()),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextFormField(
-                    controller: _longitude,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                      signed: true,
-                    ),
-                    decoration: const InputDecoration(labelText: 'Kinh độ *'),
-                    validator: (v) => ShopLocationRules.validateCoordinates(
-                      double.tryParse(_latitude.text.trim()),
-                      double.tryParse(v?.trim() ?? ''),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _saving
-                        ? null
-                        : () => _selectImage(ImageSource.camera),
-                    icon: const Icon(Icons.photo_camera),
-                    label: const Text('Chụp ảnh'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _saving
-                        ? null
-                        : () => _selectImage(ImageSource.gallery),
-                    icon: const Icon(Icons.image_outlined),
-                    label: const Text('Chọn ảnh'),
-                  ),
-                ),
-              ],
-            ),
-            if (_imageBytes != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.memory(
-                    _imageBytes!,
-                    height: 140,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              )
-            else if (_imageUrl.text.trim().isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.network(
-                    _imageUrl.text.trim(),
-                    height: 120,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        const Text('Không hiển thị được ảnh hiện tại.'),
-                  ),
-                ),
-              ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _imageUrl,
-              decoration: const InputDecoration(
-                labelText: 'URL ảnh hiện tại (tùy chọn)',
-              ),
-              validator: (v) {
-                final value = v?.trim() ?? '';
-                if (value.isEmpty) return null;
-                final u = Uri.tryParse(value);
-                return u != null &&
-                        u.hasAuthority &&
-                        (u.scheme == 'https' || u.scheme == 'http')
-                    ? null
-                    : 'Đường dẫn ảnh không hợp lệ.';
-              },
-            ),
-            const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: _saving
                   ? const SizedBox(
                       height: 18,
                       width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
-                  : const Icon(Icons.save),
+                  : const Icon(Icons.save_rounded),
               label: Text(_saving ? 'Đang lưu...' : 'Lưu thông tin tiệm'),
             ),
           ],

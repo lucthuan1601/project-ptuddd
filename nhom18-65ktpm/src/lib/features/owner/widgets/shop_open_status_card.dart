@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/supabase_client.dart';
 import '../../../core/supabase_errors.dart';
+import '../../../core/theme.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../models/shop.dart';
 import '../../../repositories/auth_repository.dart';
 
@@ -137,26 +139,61 @@ class _ShopOpenStatusCardState extends State<ShopOpenStatusCard> {
   @override
   Widget build(BuildContext context) {
     final approved = widget.shop.status == 'approved';
-    final toggle = Column(
-      children: [
-        SwitchListTile.adaptive(
-          contentPadding: EdgeInsets.zero,
-          value: _isOpen,
-          title: Text(_isOpen ? 'Đang mở cửa' : 'Tạm đóng cửa'),
-          subtitle: Text(
-            approved
-                ? 'Trạng thái này ảnh hưởng đến việc hiển thị tiệm cho khách.'
-                : 'Chỉ được bật/tắt khi tiệm đã được duyệt.',
-          ),
-          onChanged: approved && !_busy ? _setOpen : null,
+    final toggle = AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: _isOpen ? AppColors.successBg : AppColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: _isOpen
+              ? AppColors.success.withValues(alpha: 0.35)
+              : AppColors.border,
         ),
-        if (_busy) const LinearProgressIndicator(),
-      ],
+      ),
+      child: Column(
+        children: [
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: AppColors.success,
+            value: _isOpen,
+            title: Row(
+              children: [
+                LiveStatusDot(
+                  color: _isOpen ? AppColors.success : AppColors.inkMuted,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _isOpen ? 'Đang mở cửa' : 'Tạm đóng cửa',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: _isOpen
+                        ? const Color(0xFF047857)
+                        : AppColors.inkPrimary,
+                  ),
+                ),
+              ],
+            ),
+            subtitle: Text(
+              approved
+                  ? 'Trạng thái này ảnh hưởng đến việc hiển thị tiệm cho khách.'
+                  : 'Chỉ được bật/tắt khi tiệm đã được duyệt.',
+              style: const TextStyle(fontSize: 12),
+            ),
+            onChanged: approved && !_busy ? _setOpen : null,
+          ),
+          if (_busy)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: LinearProgressIndicator(minHeight: 3),
+            ),
+        ],
+      ),
     );
     if (widget.compact) return toggle;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           children: [
             Row(
@@ -170,6 +207,7 @@ class _ShopOpenStatusCardState extends State<ShopOpenStatusCard> {
                 Chip(label: Text(_statusText(widget.shop.status))),
               ],
             ),
+            const SizedBox(height: 8),
             toggle,
           ],
         ),
