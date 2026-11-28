@@ -194,7 +194,12 @@ class _AdminStatisticsScreenState extends State<AdminStatisticsScreen> {
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      child: onTap != null ? InkWell(onTap: onTap, child: content) : content,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: color, width: 3.5)),
+        ),
+        child: onTap != null ? InkWell(onTap: onTap, child: content) : content,
+      ),
     );
   }
 

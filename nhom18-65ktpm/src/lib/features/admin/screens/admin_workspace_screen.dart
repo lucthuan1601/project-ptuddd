@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../repositories/auth_repository.dart';
+import '../../../core/widgets/hci_components.dart';
 import 'admin_management_screen.dart';
 import 'admin_statistics_screen.dart';
 
@@ -32,8 +32,8 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         actions: [
           IconButton(
             tooltip: 'Đăng xuất',
-            onPressed: () => AuthRepository().signOut(),
-            icon: const Icon(Icons.logout),
+            onPressed: () => confirmAndSignOut(context),
+            icon: const Icon(Icons.logout_rounded),
           ),
         ],
       ),

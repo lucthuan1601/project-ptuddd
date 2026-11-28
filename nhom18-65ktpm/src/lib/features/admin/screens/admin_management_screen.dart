@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../models/shop.dart';
 import '../../../models/user.dart';
 import '../../../models/volunteer_profile.dart';
@@ -668,9 +669,11 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
         padding: const EdgeInsets.all(12),
         children: items.isEmpty
             ? [
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: Text('Không có dữ liệu.')),
+                const SizedBox(height: 36),
+                const EmptyStateCard(
+                  icon: Icons.inbox_outlined,
+                  title: 'Không có dữ liệu',
+                  message: 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.',
                 ),
               ]
             : items.map(builder).toList(),
