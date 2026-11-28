@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/theme.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../models/sos_request.dart';
 import '../../../repositories/auth_repository.dart';
 import '../../map/location_service.dart' as map_loc;
@@ -249,52 +251,85 @@ class _SosCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(left: BorderSide(color: AppColors.sosRed, width: 4)),
+        ),
+        padding: const EdgeInsets.all(15),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.sos, color: theme.colorScheme.error),
-                const SizedBox(width: 8),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: AppColors.dangerBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.sos_rounded,
+                    color: AppColors.sosRed,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     sos.issueType,
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
+                    color: AppColors.infoBg,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     formatDistance(item.distanceM),
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.navyBrand,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               '${formatAgo(sos.createdAt?.toLocal())} · SĐT: ${sos.contactPhone}',
               style: theme.textTheme.bodySmall,
             ),
-            if (note.isNotEmpty) ...[const SizedBox(height: 8), Text(note)],
+            if (note.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(note, style: theme.textTheme.bodyMedium),
+              ),
+            ],
             const SizedBox(height: 6),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   visualDensity: VisualDensity.compact,
                 ),
                 onPressed: () => NavigationHelper.openExternalGoogleMaps(
@@ -306,7 +341,7 @@ class _SosCard extends StatelessWidget {
                 label: const Text('Xem vị trí sự cố'),
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -318,6 +353,9 @@ class _SosCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.sosRed,
+                    ),
                     onPressed: busy ? null : onAccept,
                     child: const Text('Tiếp nhận'),
                   ),
@@ -464,19 +502,11 @@ class _Empty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 56),
-            const SizedBox(height: 12),
-            Text(text, textAlign: TextAlign.center),
-            if (action != null) ...[const SizedBox(height: 16), action!],
-          ],
-        ),
-      ),
+    return EmptyStateCard(
+      icon: icon,
+      message: text,
+      accentColor: icon == Icons.wifi_off ? AppColors.warning : AppColors.primary,
+      action: action,
     );
   }
 }

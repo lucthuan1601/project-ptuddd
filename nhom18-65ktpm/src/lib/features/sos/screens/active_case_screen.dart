@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/location_service.dart';
+import '../../../core/theme.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../models/sos_request.dart';
 import '../../../repositories/auth_repository.dart';
 import '../../navigation/screens/navigation_screen.dart';
@@ -120,34 +122,135 @@ class _Detail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final note = sos.note ?? '';
 
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(16),
       children: [
-        Text(sos.issueType, style: theme.textTheme.headlineSmall),
-        const SizedBox(height: 4),
-        Text('Gửi ${formatAgo(sos.createdAt?.toLocal())}'),
-        if (note.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Text('Ghi chú: $note'),
-        ],
-        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [AppColors.sosRedDark, AppColors.sosRed],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.sosRed.withValues(alpha: 0.25),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.sos_rounded, size: 14, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text(
+                          'ĐANG XỬ LÝ CỨU HỘ',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'Gửi ${formatAgo(sos.createdAt?.toLocal())}',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.88),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                sos.issueType,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (note.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Ghi chú: $note',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    fontSize: 13.5,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
         Card(
           child: ListTile(
-            leading: const Icon(Icons.phone),
-            title: const Text('SĐT khách hàng'),
-            subtitle: Text(sos.contactPhone),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 6,
+            ),
+            leading: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: AppColors.successBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.phone_rounded, color: AppColors.success),
+            ),
+            title: const Text(
+              'SĐT khách hàng',
+              style: TextStyle(fontSize: 12.5, color: AppColors.inkSecondary),
+            ),
+            subtitle: Text(
+              sos.contactPhone,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.inkPrimary,
+              ),
+            ),
             trailing: IconButton.filled(
+              style: IconButton.styleFrom(backgroundColor: AppColors.success),
               tooltip: 'Gọi ngay',
               onPressed: () => launchPhoneCall(context, sos.contactPhone),
-              icon: const Icon(Icons.call),
+              icon: const Icon(Icons.call_rounded, color: Colors.white),
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            backgroundColor: Colors.white,
+            minimumSize: const Size.fromHeight(50),
+            foregroundColor: AppColors.primary,
+            side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
+          ),
           onPressed: () async {
             try {
               final pos = await LocationService().current();
@@ -170,19 +273,27 @@ class _Detail extends StatelessWidget {
               }
             }
           },
-          icon: const Icon(Icons.directions),
+          icon: const Icon(Icons.directions_rounded),
           label: const Text('Chỉ đường tới vị trí sự cố'),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 14),
         FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.success,
+            foregroundColor: Colors.white,
+            minimumSize: const Size.fromHeight(52),
+          ),
           onPressed: completing ? null : onComplete,
           icon: completing
               ? const SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: Colors.white,
+                  ),
                 )
-              : const Icon(Icons.task_alt),
+              : const Icon(Icons.task_alt_rounded),
           label: const Text('Hoàn thành ca cứu hộ'),
         ),
       ],
@@ -198,17 +309,10 @@ class _Info extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(text, textAlign: TextAlign.center),
-            if (action != null) ...[const SizedBox(height: 16), action!],
-          ],
-        ),
-      ),
+    return EmptyStateCard(
+      icon: Icons.info_outline_rounded,
+      message: text,
+      action: action,
     );
   }
 }

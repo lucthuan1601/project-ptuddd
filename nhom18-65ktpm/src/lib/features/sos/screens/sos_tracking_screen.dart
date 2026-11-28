@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../models/sos_request.dart';
 import '../../../repositories/auth_repository.dart';
 import '../../../repositories/shop_repository.dart';
@@ -248,27 +250,58 @@ class _WaitingState extends State<_Waiting>
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              width: 160,
-              height: 160,
+              width: 176,
+              height: 176,
               child: AnimatedBuilder(
                 animation: _pulse,
                 builder: (context, child) => Stack(
                   alignment: Alignment.center,
                   children: [
+                    for (var wave = 0; wave < 3; wave++)
+                      Builder(
+                        builder: (_) {
+                          final t = (_pulse.value + wave / 3) % 1.0;
+                          return Container(
+                            width: 68 + 106 * t,
+                            height: 68 + 106 * t,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: color.withValues(alpha: 0.24 * (1 - t)),
+                              border: Border.all(
+                                color: color.withValues(alpha: 0.42 * (1 - t)),
+                                width: 1.5,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     Container(
-                      width: 60 + 100 * _pulse.value,
-                      height: 60 + 100 * _pulse.value,
+                      width: 78,
+                      height: 78,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: color.withValues(
-                          alpha: 0.35 * (1 - _pulse.value),
+                        gradient: const LinearGradient(
+                          colors: [AppColors.sosRedDark, AppColors.sosRed],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withValues(alpha: 0.38),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
                       ),
+                      child: child,
                     ),
-                    child!,
                   ],
                 ),
-                child: Icon(Icons.sos, size: 56, color: color),
+                child: const Icon(
+                  Icons.sos_rounded,
+                  size: 40,
+                  color: Colors.white,
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -399,19 +432,16 @@ class _Message extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 64),
-            const SizedBox(height: 16),
-            Text(text, textAlign: TextAlign.center),
-            if (action != null) ...[const SizedBox(height: 20), action!],
-          ],
-        ),
-      ),
+    final accent = icon == Icons.check_circle
+        ? AppColors.success
+        : (icon == Icons.wifi_off || icon == Icons.timer_off)
+            ? AppColors.warning
+            : AppColors.primary;
+    return EmptyStateCard(
+      icon: icon,
+      message: text,
+      accentColor: accent,
+      action: action,
     );
   }
 }
