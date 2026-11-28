@@ -3,11 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/theme.dart';
 import '../../../repositories/auth_repository.dart';
+import '../../map/geocoding_helper.dart';
 import '../../map/widgets/app_map_view.dart';
 import '../data/shop_location_rules.dart';
 
@@ -26,6 +27,7 @@ class ShopLocationPicker extends StatefulWidget {
     this.title = 'Ghim vị trí tiệm',
     this.markerTitle = 'Vị trí tiệm',
     this.requireAddress = true,
+    this.autoLocate = true,
   });
 
   final LatLng? initialPosition;
@@ -33,6 +35,7 @@ class ShopLocationPicker extends StatefulWidget {
   final String title;
   final String markerTitle;
   final bool requireAddress;
+  final bool autoLocate;
 
   @override
   State<ShopLocationPicker> createState() => _ShopLocationPickerState();
@@ -41,9 +44,6 @@ class ShopLocationPicker extends StatefulWidget {
 class _ShopLocationPickerState extends State<ShopLocationPicker> {
   static const _defaultCenter = LatLng(21.0285, 105.8542);
 
-  final geocoding.Geocoding _geocoder = geocoding.Geocoding(
-    locale: const Locale('vi', 'VN'),
-  );
   final _latitude = TextEditingController();
   final _longitude = TextEditingController();
   final _address = TextEditingController();
@@ -64,7 +64,7 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
     _address.text = widget.initialAddress ?? '';
     if (_selected != null) {
       _fillCoordinates(_selected!);
-    } else {
+    } else if (widget.autoLocate) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_useGps());
       });
@@ -92,36 +92,23 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  String _formatAddress(geocoding.Placemark p) {
-    return [
-          p.street,
-          p.subLocality,
-          p.locality,
-          p.subAdministrativeArea,
-          p.administrativeArea,
-          p.country,
-        ]
-        .whereType<String>()
-        .map((v) => v.trim())
-        .where((v) => v.isNotEmpty)
-        .toSet()
-        .join(', ');
-  }
-
   Future<void> _reverseGeocode(LatLng point) async {
     final version = ++_addressVersion;
     setState(() => _busyAddress = true);
     try {
-      final places = await _geocoder.placemarkFromCoordinates(
+      final address = await GeocodingHelper.reverseGeocode(
         point.latitude,
         point.longitude,
       );
-      if (!mounted || version != _addressVersion || places.isEmpty) return;
-      final address = _formatAddress(places.first);
-      if (address.isNotEmpty) _address.text = address;
+      if (!mounted || version != _addressVersion) return;
+      if (address != null && address.isNotEmpty) {
+        _address.text = address;
+      } else {
+        _message('Chưa lấy được địa chỉ tự động. Bạn có thể nhập địa chỉ thủ công.');
+      }
     } catch (_) {
       if (mounted && version == _addressVersion) {
-        _message('Chưa lấy được địa chỉ. Bạn có thể nhập địa chỉ thủ công.');
+        _message('Chưa lấy được địa chỉ tự động. Bạn có thể nhập địa chỉ thủ công.');
       }
     } finally {
       if (mounted && version == _addressVersion) {
@@ -213,12 +200,10 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
     if (text.isEmpty || _busySearch) return;
     setState(() => _busySearch = true);
     try {
-      final matches = await _geocoder.locationFromAddress(text);
-      if (matches.isEmpty) {
+      final point = await GeocodingHelper.searchAddress(text);
+      if (point == null) {
         throw const AppException('Không tìm thấy địa chỉ này.');
       }
-      final first = matches.first;
-      final point = LatLng(first.latitude, first.longitude);
       if (ShopLocationRules.validateCoordinates(
             point.latitude,
             point.longitude,
@@ -304,8 +289,8 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
                             height: 76,
                             alignment: Alignment.bottomCenter,
                             child: buildMapPin(
-                              color: const Color(0xFFD32F2F),
-                              icon: Icons.location_on,
+                              color: AppColors.sosRed,
+                              icon: Icons.location_on_rounded,
                               selected: true,
                               label: widget.markerTitle,
                             ),
@@ -313,33 +298,46 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
                         ],
                 ),
                 Positioned(
-                  top: 10,
-                  left: 12,
-                  right: 12,
+                  top: 12,
+                  left: 14,
+                  right: 14,
                   child: Center(
                     child: IgnorePointer(
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
+                          horizontal: 14,
+                          vertical: 7,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.92),
-                          borderRadius: BorderRadius.circular(20),
+                          color: Colors.white.withValues(alpha: 0.95),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: AppColors.border),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.12),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
+                              color: AppColors.navyDeep.withValues(alpha: 0.12),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
                             ),
                           ],
                         ),
-                        child: const Text(
-                          'Chạm vào bản đồ để đặt ghim vị trí',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.touch_app_rounded,
+                              size: 16,
+                              color: AppColors.primary,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'Chạm vào bản đồ để đặt ghim vị trí',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.inkPrimary,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -348,91 +346,123 @@ class _ShopLocationPickerState extends State<ShopLocationPicker> {
               ],
             ),
           ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 360),
-            child: ListView(
-              shrinkWrap: true,
-              padding: const EdgeInsets.all(12),
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _search,
-                        decoration: const InputDecoration(
-                          labelText: 'Tìm đường hoặc thành phố',
-                        ),
-                        onSubmitted: (_) => _findAddress(),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.search),
-                      tooltip: 'Tìm địa chỉ',
-                      onPressed: _busySearch ? null : _findAddress,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _latitude,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: true,
-                        ),
-                        decoration: const InputDecoration(labelText: 'Vĩ độ'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: _longitude,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: true,
-                        ),
-                        decoration: const InputDecoration(labelText: 'Kinh độ'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (_busyAddress) const LinearProgressIndicator(),
-                TextField(
-                  controller: _address,
-                  decoration: const InputDecoration(
-                    labelText: 'Địa chỉ xem trước (có thể sửa)',
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: _applyCoordinates,
-                      icon: const Icon(Icons.place),
-                      label: const Text('Đặt ghim'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _busyGps ? null : _useGps,
-                      icon: const Icon(Icons.my_location),
-                      label: Text(
-                        _busyGps ? 'Đang lấy GPS...' : 'Vị trí hiện tại',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                FilledButton.icon(
-                  onPressed: _confirm,
-                  icon: const Icon(Icons.check),
-                  label: const Text('Xác nhận vị trí này'),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: const Border(top: BorderSide(color: AppColors.border)),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.navyDeep.withValues(alpha: 0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, -4),
                 ),
               ],
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _search,
+                          decoration: const InputDecoration(
+                            labelText: 'Tìm đường hoặc thành phố',
+                            prefixIcon: Icon(Icons.search_rounded, size: 20),
+                          ),
+                          onSubmitted: (_) => _findAddress(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.tonal(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                        ),
+                        onPressed: _busySearch ? null : _findAddress,
+                        child: _busySearch
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.search_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _latitude,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                            signed: true,
+                          ),
+                          decoration: const InputDecoration(labelText: 'Vĩ độ'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _longitude,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                            signed: true,
+                          ),
+                          decoration:
+                              const InputDecoration(labelText: 'Kinh độ'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (_busyAddress)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: LinearProgressIndicator(minHeight: 3),
+                    ),
+                  TextField(
+                    controller: _address,
+                    decoration: const InputDecoration(
+                      labelText: 'Địa chỉ xem trước (có thể sửa)',
+                      prefixIcon: Icon(Icons.location_on_outlined, size: 20),
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _applyCoordinates,
+                        icon: const Icon(Icons.place_rounded, size: 18),
+                        label: const Text('Đặt ghim'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _busyGps ? null : _useGps,
+                        icon: const Icon(Icons.my_location_rounded, size: 18),
+                        label: Text(
+                          _busyGps ? 'Đang lấy GPS...' : 'Vị trí hiện tại',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _confirm,
+                    icon: const Icon(Icons.check_rounded),
+                    label: const Text('Xác nhận vị trí này'),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

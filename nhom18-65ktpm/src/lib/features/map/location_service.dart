@@ -1,6 +1,7 @@
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+
+import 'geocoding_helper.dart';
 
 /// Kết quả định vị kèm thông tin trạng thái GPS và quyền truy cập (UC-02).
 class LocationResult {
@@ -27,8 +28,6 @@ class LocationService {
 
   /// Vị trí mặc định tại trung tâm Hà Nội (Hồ Gươm) khi không có quyền GPS
   static const LatLng defaultHanoi = LatLng(21.028511, 105.854167);
-
-  static final _geocoding = Geocoding();
 
   /// Lấy vị trí GPS hiện tại kèm kiểm tra quyền và dịch vụ định vị
   static Future<LocationResult> getCurrentLocation() async {
@@ -101,31 +100,10 @@ class LocationService {
   /// Dịch tọa độ thành chuỗi tên đường/phường/quận (Reverse Geocoding)
   static Future<String> getAddressFromCoordinates(
       double latitude, double longitude) async {
-    try {
-      final placemarks = await _geocoding.placemarkFromCoordinates(latitude, longitude);
-      if (placemarks.isNotEmpty) {
-        final p = placemarks.first;
-        final segments = <String>[];
-
-        if (p.street != null && p.street!.trim().isNotEmpty) {
-          segments.add(p.street!.trim());
-        }
-        if (p.subLocality != null && p.subLocality!.trim().isNotEmpty && p.subLocality != p.street) {
-          segments.add(p.subLocality!.trim());
-        }
-        if (p.subAdministrativeArea != null && p.subAdministrativeArea!.trim().isNotEmpty) {
-          segments.add(p.subAdministrativeArea!.trim());
-        }
-        if (p.administrativeArea != null && p.administrativeArea!.trim().isNotEmpty) {
-          segments.add(p.administrativeArea!.trim());
-        }
-
-        if (segments.isNotEmpty) {
-          return segments.join(', ');
-        }
-      }
-    } catch (_) {}
-
+    final address = await GeocodingHelper.reverseGeocode(latitude, longitude);
+    if (address != null && address.isNotEmpty) {
+      return address;
+    }
     return 'Tọa độ: ${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}';
   }
 }
