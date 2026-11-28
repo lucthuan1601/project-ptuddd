@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../core/location_service.dart';
 import '../../../core/theme.dart';
 import '../../../core/validators.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../models/user.dart';
 import '../../../models/volunteer_profile.dart';
 import '../../../repositories/auth_repository.dart';
@@ -236,8 +237,8 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
           if (widget.showLogout)
             IconButton(
               tooltip: 'Đăng xuất',
-              onPressed: () => AuthRepository().signOut(),
-              icon: const Icon(Icons.logout),
+              onPressed: () => confirmAndSignOut(context),
+              icon: const Icon(Icons.logout_rounded),
             ),
         ],
       ),

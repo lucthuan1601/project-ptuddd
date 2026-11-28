@@ -15,6 +15,7 @@ import '../../repositories/auth_repository.dart';
 import '../location_service.dart';
 import '../push_service.dart';
 import '../theme.dart';
+import '../widgets/hci_components.dart';
 
 /// Phân hệ tình nguyện viên: UC-11 (sẵn sàng), UC-12 (nhận ca), UC-13 (hồ sơ).
 class VolunteerShell extends StatefulWidget {
@@ -112,8 +113,8 @@ class _VolunteerShellState extends State<VolunteerShell> {
             actions: [
               IconButton(
                 tooltip: 'Đăng xuất',
-                onPressed: () => AuthRepository().signOut(),
-                icon: const Icon(Icons.logout),
+                onPressed: () => confirmAndSignOut(context),
+                icon: const Icon(Icons.logout_rounded),
               ),
             ],
           ),
@@ -251,11 +252,83 @@ class _ProfileTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: AppColors.heroGradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.navyDeep.withValues(alpha: 0.18),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.volunteer_activism_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Hồ sơ tình nguyện viên',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  buildStatusBadge(profile.status),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ProfileMetricPill(
+                      icon: Icons.emoji_events_rounded,
+                      label: 'Ca hoàn thành',
+                      value: '${profile.completedCount}',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _ProfileMetricPill(
+                      icon: Icons.radar_rounded,
+                      label: 'Bán kính hỗ trợ',
+                      value: '${profile.serviceRadiusKm} km',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
         Card(
           child: Column(
             children: [
               ListTile(
-                leading: const Icon(Icons.verified_user),
+                leading: const Icon(
+                  Icons.verified_user_rounded,
+                  color: AppColors.primary,
+                ),
                 title: const Text('Trạng thái hồ sơ'),
                 trailing: buildStatusBadge(profile.status),
                 subtitle: Text(
@@ -267,36 +340,33 @@ class _ProfileTab extends StatelessWidget {
               ),
               const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.phone),
+                leading: const Icon(
+                  Icons.phone_rounded,
+                  color: AppColors.success,
+                ),
                 title: const Text('Số điện thoại'),
                 subtitle: Text(profile.phone),
               ),
               const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.build),
+                leading: const Icon(
+                  Icons.build_rounded,
+                  color: AppColors.motoOrange,
+                ),
                 title: const Text('Kỹ năng'),
                 subtitle: Text(profile.skills.join(', ')),
               ),
               if (tools.isNotEmpty) ...[
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.handyman),
+                  leading: const Icon(
+                    Icons.handyman_rounded,
+                    color: AppColors.navyBrand,
+                  ),
                   title: const Text('Dụng cụ'),
                   subtitle: Text(tools),
                 ),
               ],
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.radar),
-                title: const Text('Bán kính hỗ trợ'),
-                subtitle: Text('${profile.serviceRadiusKm} km'),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.emoji_events),
-                title: const Text('Ca đã hoàn thành'),
-                subtitle: Text('${profile.completedCount}'),
-              ),
             ],
           ),
         ),
@@ -304,10 +374,61 @@ class _ProfileTab extends StatelessWidget {
         if (profile.status != 'banned')
           FilledButton.icon(
             onPressed: onEdit,
-            icon: const Icon(Icons.edit),
+            icon: const Icon(Icons.edit_rounded),
             label: const Text('Chỉnh sửa hồ sơ'),
           ),
       ],
+    );
+  }
+}
+
+class _ProfileMetricPill extends StatelessWidget {
+  const _ProfileMetricPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.motoAmber, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -321,21 +442,10 @@ class _Centered extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 56),
-              const SizedBox(height: 12),
-            ],
-            Text(text, textAlign: TextAlign.center),
-            if (action != null) ...[const SizedBox(height: 16), action!],
-          ],
-        ),
-      ),
+    return EmptyStateCard(
+      icon: icon ?? Icons.info_outline_rounded,
+      message: text,
+      action: action,
     );
   }
 }

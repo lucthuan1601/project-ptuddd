@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/location_service.dart';
+import '../../../core/theme.dart';
+import '../../../core/widgets/hci_components.dart';
 import '../../../models/volunteer_profile.dart';
 import '../../../repositories/auth_repository.dart';
 import '../../sos/data/supabase_sos_repository.dart';
@@ -82,15 +84,64 @@ class _AvailabilityCardState extends State<AvailabilityCard> {
   Widget build(BuildContext context) {
     final profile = widget.profile;
     final approved = profile.status == 'approved';
-    final scheme = Theme.of(context).colorScheme;
 
-    return Card(
-      child: SwitchListTile(
-        secondary: Icon(
-          _value ? Icons.volunteer_activism : Icons.bedtime,
-          color: _value ? scheme.primary : scheme.outline,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      decoration: BoxDecoration(
+        color: _value ? AppColors.successBg : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: _value
+              ? AppColors.success.withValues(alpha: 0.45)
+              : AppColors.border,
+          width: _value ? 1.5 : 1,
         ),
-        title: Text(_value ? 'Sẵn sàng hỗ trợ' : 'Tạm nghỉ'),
+        boxShadow: [
+          BoxShadow(
+            color: (_value ? AppColors.success : AppColors.navyDeep)
+                .withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: SwitchListTile.adaptive(
+        activeThumbColor: AppColors.success,
+        secondary: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: _value
+                ? AppColors.success.withValues(alpha: 0.16)
+                : AppColors.surfaceMuted,
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(
+            _value
+                ? Icons.volunteer_activism_rounded
+                : Icons.bedtime_rounded,
+            color: _value ? AppColors.success : AppColors.inkMuted,
+          ),
+        ),
+        title: Row(
+          children: [
+            LiveStatusDot(
+              color: _value ? AppColors.success : AppColors.inkMuted,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _value ? 'Sẵn sàng hỗ trợ' : 'Tạm nghỉ',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: _value
+                      ? const Color(0xFF047857)
+                      : AppColors.inkPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
         subtitle: Text(
           approved
               ? 'Đã hoàn thành ${profile.completedCount} ca · bán kính ${profile.serviceRadiusKm} km'
